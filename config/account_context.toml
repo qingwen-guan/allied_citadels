@@ -1,0 +1,15 @@
+[account]
+# PostgreSQL database connection string
+# Format: postgresql://user:password@host:port/database
+dsn = "postgresql://postgres:Pwd123@localhost:15432/allied_citadels"
+
+# Salt string used for password hashing
+password_salt = "spoil-tigger-interest-corset"
+
+# Server address for the HTTP API server
+# Format: host:port
+server_addr = "0.0.0.0:3000"
+
+min_connections = 2
+max_connections = 10
+

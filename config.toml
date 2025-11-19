@@ -1,0 +1,4 @@
+host = "127.0.0.1"
+port = 7001
+history_uuid = "abb0f3fd-f725-4abd-bda6-829b5683b8bb"
+ws_agent_uuid = "917c7861-185d-496c-82a1-51692a294a2e"

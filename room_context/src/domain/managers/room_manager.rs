@@ -1,0 +1,637 @@
+use account_context::AccountId;
+
+use crate::domain::entities::{Room, RoomParticipant, RoomToAccountMessage, RoomToAccountMessageDetails};
+use crate::domain::managers::MessageManager;
+use crate::domain::repositories::{Pagination, RawMessageRepository, RoomRepository};
+use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
+use crate::error::RoomError;
+
+/// Result enum for update_room_max_players operation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateMaxPlayersResult {
+  Changed,
+  Unchanged,
+}
+
+/// Result enum for enter_room_standing_by operation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnterRoomResult {
+  AlreadyInRoom,
+  RoomExpired,
+  Success,
+}
+
+/// Result enum for change_seat operation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChangeSeatResult {
+  AlreadyInSeat,
+  SeatOutOfRange,
+  SeatOccupied,
+  Success,
+}
+
+/// Result enum for stand_up operation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StandUpResult {
+  AlreadyStanding,
+  NotInRoom,
+  Success,
+}
+
+/// Result enum for take_seat operation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TakeSeatResult {
+  RoomExpired,
+  SeatOutOfRange,
+  SeatOccupied,
+  NotStandingBy,
+  Success,
+}
+
+pub struct RoomManager {
+  room_repository: Box<dyn RoomRepository>,
+  message_manager: MessageManager,
+}
+
+impl RoomManager {
+  pub fn new(
+    room_repository: Box<dyn RoomRepository>, raw_message_repository: Box<dyn RawMessageRepository>,
+  ) -> Self {
+    Self {
+      room_repository,
+      message_manager: MessageManager::new(raw_message_repository),
+    }
+  }
+
+  /// Helper method to send messages to multiple participants in a room
+  /// Attempts batch insert first, falls back to individual sends on failure
+  async fn send_messages_to_participants(
+    &self, room_id: RoomId, participants: &[RoomParticipant], details: RoomToAccountMessageDetails,
+  ) {
+    // Create messages for each participant
+    let messages: Vec<_> = participants
+      .iter()
+      .map(|p| RoomToAccountMessage::new(room_id, p.account_id(), details.clone()))
+      .collect();
+
+    if let Err(e) = self
+      .message_manager
+      .batch_insert_room_to_account_message(messages)
+      .await
+    {
+      tracing::error!("Failed to batch send messages in room {}: {:?}", room_id, e);
+    }
+  }
+
+  /// Generate a random room name with Chinese characters
+  pub fn generate_random_room_name() -> String {
+    use rand::Rng;
+    let mut rng = rand::rng();
+
+    // Chinese adjectives and nouns for room names
+    let chinese_adjectives = ["勇敢", "智慧", "强大", "高贵", "聪明", "大胆", "明亮", "敏捷"];
+    let chinese_nouns = ["雄鹰", "雄狮", "野狼", "神龙", "凤凰", "猛虎", "巨熊", "猎鹰"];
+
+    let adj = chinese_adjectives[rng.random_range(0..chinese_adjectives.len())];
+    let noun = chinese_nouns[rng.random_range(0..chinese_nouns.len())];
+    format!("{}{}", adj, noun)
+  }
+
+  /// Create a new room
+  pub async fn create_room(
+    &self, name: &RoomName, creator: AccountId, max_players: MaxPlayers,
+  ) -> Result<Room, RoomError> {
+    // Create the room (repository handles room number generation)
+    self.room_repository.create(creator, name, max_players).await
+  }
+
+  /// Get room by ID
+  pub async fn get_room_by_id(&self, id: RoomId) -> Result<Option<Room>, RoomError> {
+    self.room_repository.find_by_id(id).await
+  }
+
+  /// Get room by name (returns first match if multiple exist)
+  pub async fn get_room_by_name(&self, name: &RoomName) -> Result<Option<Room>, RoomError> {
+    let rooms = self.room_repository.find_by_name(name).await?;
+    Ok(rooms.into_iter().next())
+  }
+
+  /// List all rooms with optional pagination
+  pub async fn list_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
+    self.room_repository.find_all(pagination).await
+  }
+
+  /// Update room name
+  pub async fn update_room_name(&self, id: RoomId, new_name: &RoomName) -> Result<(), RoomError> {
+    let updated = self.room_repository.update_name(id, new_name).await?;
+
+    if !updated {
+      return Err(RoomError::NotFound);
+    }
+
+    Ok(())
+  }
+
+  /// Update room max players
+  pub async fn update_room_max_players(
+    &self, id: RoomId, max_players: MaxPlayers,
+  ) -> Result<UpdateMaxPlayersResult, RoomError> {
+    // Check if room exists first
+    let room = self.room_repository.find_by_id(id).await?;
+    let room = room.ok_or(RoomError::NotFound)?;
+
+    // Check if the value is unchanged
+    if room.max_players() == max_players {
+      return Ok(UpdateMaxPlayersResult::Unchanged);
+    }
+
+    let updated = self.room_repository.update_max_players(id, max_players).await?;
+    if !updated {
+      // This shouldn't happen if room exists, but handle it anyway
+      return Err(RoomError::NotFound);
+    }
+
+    // Get participants once for both messaging and standing up
+    let participants = self.get_room_participants(id).await?;
+
+    // Send message to acknowledge all accounts in the room about the max_players update
+    let old_max_players = room.max_players();
+    let details = RoomToAccountMessageDetails::MaxPlayersUpdated {
+      room_id: id,
+      from: old_max_players,
+      to: max_players,
+    };
+    self.send_messages_to_participants(id, &participants, details).await;
+
+    // Stand up all accounts in the room when max_players changes
+    // (stand_up already clears both seat_number and viewing_seat_number)
+    let sitting_participants: Vec<_> = participants.iter().filter(|p| p.is_sitting()).cloned().collect();
+    let mut force_stand_up_messages = Vec::new();
+
+    for participant in &sitting_participants {
+      if let Err(e) = self.stand_up(id, participant.account_id()).await {
+        // Log error but continue with other participants
+        tracing::error!(
+          "Failed to stand up account {} in room {}: {:?}",
+          participant.account_id(),
+          id,
+          e
+        );
+      } else {
+        // Collect messages for batch insert
+        let details = RoomToAccountMessageDetails::ForceStandUp {
+          room_id: id,
+          account_id: participant.account_id(),
+          reason: Some("Room max players changed".to_string()),
+        };
+        let message = RoomToAccountMessage::new(id, participant.account_id(), details);
+        force_stand_up_messages.push(message);
+      }
+    }
+
+    // Send force_stand_up messages using batch insert
+    if !force_stand_up_messages.is_empty()
+      && let Err(e) = self
+        .message_manager
+        .batch_insert_room_to_account_message(force_stand_up_messages)
+        .await
+    {
+      tracing::error!("Failed to batch send force_stand_up messages in room {}: {:?}", id, e);
+    }
+
+    Ok(UpdateMaxPlayersResult::Changed)
+  }
+
+  /// Delete room by ID
+  pub async fn delete_room(&self, id: RoomId) -> Result<(), RoomError> {
+    // Get participants before deletion to send messages
+    let participants = self.get_room_participants(id).await?;
+
+    // Send delete_room message to all accounts in the room before deletion
+    let details = RoomToAccountMessageDetails::RoomDeleted { room_id: id };
+    self.send_messages_to_participants(id, &participants, details).await;
+
+    // Delete all participants explicitly (don't rely on CASCADE)
+    for participant in participants {
+      if let Err(e) = self
+        .room_repository
+        .remove_participant(id, participant.account_id())
+        .await
+      {
+        tracing::error!(
+          "Failed to remove participant {} from room {}: {:?}",
+          participant.account_id(),
+          id,
+          e
+        );
+        // Continue deleting other participants even if one fails
+      }
+    }
+
+    let is_deleted = self.room_repository.delete(id).await?;
+    if !is_deleted {
+      return Err(RoomError::NotFound);
+    }
+
+    Ok(())
+  }
+
+  /// Enter a room (always enters standing by, use change_seat to take a seat)
+  pub async fn enter_room_standing_by(
+    &self, account_id: AccountId, room_id: RoomId,
+  ) -> Result<EnterRoomResult, RoomError> {
+    // Check if room exists and is not expired
+    let room = self
+      .room_repository
+      .find_by_id(room_id)
+      .await?
+      .ok_or(RoomError::NotFound)?;
+
+    if chrono::Utc::now() > room.expires_at() {
+      return Ok(EnterRoomResult::RoomExpired);
+    }
+
+    // Check if account is already in the room
+    if self
+      .room_repository
+      .get_participant(room_id, account_id)
+      .await?
+      .is_some()
+    {
+      // If already in room, return AlreadyInRoom
+      return Ok(EnterRoomResult::AlreadyInRoom);
+    }
+
+    // Add participant (always standing by)
+    self
+      .room_repository
+      .add_participant(room_id, account_id, None, None)
+      .await?;
+
+    Ok(EnterRoomResult::Success)
+  }
+
+  /// Leave a room
+  pub async fn leave_room(&self, room_id: RoomId, account_id: AccountId) -> Result<(), RoomError> {
+    // Check if account is in the room
+    let _participant = self
+      .room_repository
+      .get_participant(room_id, account_id)
+      .await?
+      .ok_or_else(|| RoomError::InvalidOperation("Account is not in this room".to_string()))?;
+
+    // Remove participant
+    let removed = self.room_repository.remove_participant(room_id, account_id).await?;
+    if !removed {
+      return Err(RoomError::InvalidOperation("Failed to remove participant".to_string()));
+    }
+
+    Ok(())
+  }
+
+  /// Change seat in a room
+  pub async fn change_seat(
+    &self, room_id: RoomId, account_id: AccountId, new_seat: SeatNumber,
+  ) -> Result<ChangeSeatResult, RoomError> {
+    // Check if room exists and is not expired
+    let room = self
+      .room_repository
+      .find_by_id(room_id)
+      .await?
+      .ok_or(RoomError::NotFound)?;
+
+    if chrono::Utc::now() > room.expires_at() {
+      return Err(RoomError::InvalidOperation("Room has expired".to_string()));
+    }
+
+    // Check if account is in the room
+    let participant = self
+      .room_repository
+      .get_participant(room_id, account_id)
+      .await?
+      .ok_or_else(|| RoomError::InvalidOperation("Account is not in this room".to_string()))?;
+
+    // If already in the same seat, return AlreadyInSeat
+    if participant.seat_number() == Some(new_seat) {
+      return Ok(ChangeSeatResult::AlreadyInSeat);
+    }
+
+    // Validate seat number is within max_players range
+    let max_seat = (room.max_players().value() - 1) as u8;
+    if new_seat.value() > max_seat {
+      return Ok(ChangeSeatResult::SeatOutOfRange);
+    }
+
+    // Check if new seat is already taken
+    if let Some(existing) = self.room_repository.get_participant_by_seat(room_id, new_seat).await?
+      && existing.account_id() != account_id
+    {
+      return Ok(ChangeSeatResult::SeatOccupied);
+    }
+
+    // Check if room is full (only count sitting participants)
+    let sitting_count = self.room_repository.count_sitting_participants(room_id).await?;
+    if sitting_count >= room.max_players().value() {
+      return Err(RoomError::InvalidOperation("Room is full".to_string()));
+    }
+
+    // Update seat (clears viewing when sitting)
+    self
+      .room_repository
+      .update_participant_seat(room_id, account_id, Some(new_seat))
+      .await?;
+
+    Ok(ChangeSeatResult::Success)
+  }
+
+  /// Take a seat (for accounts standing by)
+  pub async fn take_seat(
+    &self, room_id: RoomId, account_id: AccountId, seat: SeatNumber,
+  ) -> Result<TakeSeatResult, RoomError> {
+    // Check if room exists and is not expired
+    let room = self
+      .room_repository
+      .find_by_id(room_id)
+      .await?
+      .ok_or(RoomError::NotFound)?;
+
+    if chrono::Utc::now() > room.expires_at() {
+      return Ok(TakeSeatResult::RoomExpired);
+    }
+
+    // Check if account is in the room
+    let participant = self
+      .room_repository
+      .get_participant(room_id, account_id)
+      .await?
+      .ok_or_else(|| RoomError::InvalidOperation("Account is not in this room".to_string()))?;
+
+    // Must be standing by to take a seat
+    if participant.is_sitting() {
+      return Ok(TakeSeatResult::NotStandingBy);
+    }
+
+    // Validate seat number is within max_players range
+    let max_seat = (room.max_players().value() - 1) as u8;
+    if seat.value() > max_seat {
+      return Ok(TakeSeatResult::SeatOutOfRange);
+    }
+
+    // Check if seat is already taken
+    if let Some(existing) = self.room_repository.get_participant_by_seat(room_id, seat).await?
+      && existing.account_id() != account_id
+    {
+      return Ok(TakeSeatResult::SeatOccupied);
+    }
+
+    // Check if room is full (only count sitting participants)
+    let sitting_count = self.room_repository.count_sitting_participants(room_id).await?;
+    if sitting_count >= room.max_players().value() {
+      return Err(RoomError::InvalidOperation("Room is full".to_string()));
+    }
+
+    // Update seat (clears viewing when sitting)
+    self
+      .room_repository
+      .update_participant_seat(room_id, account_id, Some(seat))
+      .await?;
+
+    Ok(TakeSeatResult::Success)
+  }
+
+  /// Stand up from seat (become standing by)
+  pub async fn stand_up(&self, room_id: RoomId, account_id: AccountId) -> Result<StandUpResult, RoomError> {
+    // Check if room exists and is not expired
+    let _room = self
+      .room_repository
+      .find_by_id(room_id)
+      .await?
+      .ok_or(RoomError::NotFound)?;
+
+    // Check if account is in the room
+    let participant = match self.room_repository.get_participant(room_id, account_id).await? {
+      Some(p) => p,
+      None => return Ok(StandUpResult::NotInRoom),
+    };
+
+    // If already standing, return AlreadyStanding
+    if participant.is_standing_by() {
+      return Ok(StandUpResult::AlreadyStanding);
+    }
+
+    // Stand up (set seat to None, viewing to None)
+    self.room_repository.stand_up_participant(room_id, account_id).await?;
+
+    Ok(StandUpResult::Success)
+  }
+
+  /// View behind a seat (must be standing by)
+  pub async fn view_behind_seat(
+    &self, room_id: RoomId, account_id: AccountId, viewing_seat: SeatNumber,
+  ) -> Result<(), RoomError> {
+    // Check if room exists and is not expired
+    let room = self
+      .room_repository
+      .find_by_id(room_id)
+      .await?
+      .ok_or(RoomError::NotFound)?;
+
+    if chrono::Utc::now() > room.expires_at() {
+      return Err(RoomError::InvalidOperation("Room has expired".to_string()));
+    }
+
+    // Check if account is in the room
+    let participant = self
+      .room_repository
+      .get_participant(room_id, account_id)
+      .await?
+      .ok_or_else(|| RoomError::InvalidOperation("Account is not in this room".to_string()))?;
+
+    // Must be standing by to view
+    if participant.is_sitting() {
+      return Err(RoomError::InvalidOperation(
+        "Cannot view while sitting. Please stand up first.".to_string(),
+      ));
+    }
+
+    // Validate viewing seat number is within max_players range
+    let max_seat = (room.max_players().value() - 1) as u8;
+    if viewing_seat.value() > max_seat {
+      return Err(RoomError::InvalidOperation(format!(
+        "Viewing seat number {} exceeds max players {}",
+        viewing_seat.value(),
+        room.max_players().value()
+      )));
+    }
+
+    // Update viewing position
+    self
+      .room_repository
+      .update_participant_viewing(room_id, account_id, Some(viewing_seat))
+      .await?;
+
+    Ok(())
+  }
+
+  /// Stop viewing (but remain in room)
+  // Note: viewing_seat_number is None means viewing globally, rather than not viewing
+  pub async fn stop_viewing(&self, room_id: RoomId, account_id: AccountId) -> Result<(), RoomError> {
+    // Check if account is in the room
+    let _participant = self
+      .room_repository
+      .get_participant(room_id, account_id)
+      .await?
+      .ok_or_else(|| RoomError::InvalidOperation("Account is not in this room".to_string()))?;
+
+    // Update viewing to None
+    self
+      .room_repository
+      .update_participant_viewing(room_id, account_id, None)
+      .await?;
+
+    Ok(())
+  }
+
+  /// Get all participants in a room
+  pub async fn get_room_participants(&self, room_id: RoomId) -> Result<Vec<RoomParticipant>, RoomError> {
+    // Check if room exists
+    let _room = self
+      .room_repository
+      .find_by_id(room_id)
+      .await?
+      .ok_or(RoomError::NotFound)?;
+
+    self.room_repository.get_participants(room_id).await
+  }
+
+  /// Get participant info for an account in a room
+  pub async fn get_participant(
+    &self, room_id: RoomId, account_id: AccountId,
+  ) -> Result<Option<RoomParticipant>, RoomError> {
+    self.room_repository.get_participant(room_id, account_id).await
+  }
+
+  /// Take a random available seat in a room
+  pub async fn take_random_seat(
+    &self, account_id: AccountId, room_id: RoomId,
+  ) -> Result<Option<SeatNumber>, RoomError> {
+    let room = self.get_room_by_id(room_id).await?.ok_or(RoomError::NotFound)?;
+
+    // Get occupied seats from participants
+    let participants = self.room_repository.get_participants(room_id).await?;
+    let occupied_seats: Vec<u8> = participants
+      .into_iter()
+      .filter_map(|p| p.seat_number().map(|s| s.value()))
+      .collect();
+
+    // Find available seats
+    let max_seat = (room.max_players().value() - 1) as u8;
+    let available_seats: Vec<u8> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
+
+    if available_seats.is_empty() {
+      return Ok(None);
+    }
+
+    // Pick a random available seat
+    use rand::Rng;
+    let mut rng = rand::rng();
+    let random_index = rng.random_range(0..available_seats.len());
+    let random_seat = SeatNumber::from(available_seats[random_index]);
+
+    // Try to take the seat
+    match self.take_seat(room_id, account_id, random_seat).await? {
+      TakeSeatResult::Success => Ok(Some(random_seat)),
+      _ => Ok(None), // Seat was taken between checking and attempting (race condition)
+    }
+  }
+
+  /// Enter a room and take a random available seat
+  pub async fn enter_room_and_take_random_seat(
+    &self, account_id: AccountId, room_id: RoomId,
+  ) -> Result<Option<SeatNumber>, RoomError> {
+    // Check if room exists and is not expired
+    let room = self
+      .room_repository
+      .find_by_id(room_id)
+      .await?
+      .ok_or(RoomError::NotFound)?;
+
+    if chrono::Utc::now() > room.expires_at() {
+      return Err(RoomError::InvalidOperation("Room has expired".to_string()));
+    }
+
+    // Get occupied seats from participants before adding participant
+    let participants = self.room_repository.get_participants(room_id).await?;
+    let occupied_seats: Vec<u8> = participants
+      .into_iter()
+      .filter_map(|p| p.seat_number().map(|s| s.value()))
+      .collect();
+
+    // Check if account is already in the room
+    let participant = self.room_repository.get_participant(room_id, account_id).await?;
+    let random_seat = if participant.is_none() {
+      // Find available seats
+      let max_seat = (room.max_players().value() - 1) as u8;
+      let available_seats: Vec<u8> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
+
+      if available_seats.is_empty() {
+        return Ok(None);
+      }
+
+      // Pick a random available seat
+      use rand::Rng;
+      let mut rng = rand::rng();
+      let random_index = rng.random_range(0..available_seats.len());
+      let random_seat = SeatNumber::from(available_seats[random_index]);
+
+      // Add participant directly with the seat_number to avoid multiple db queries
+      self
+        .room_repository
+        .add_participant(room_id, account_id, Some(random_seat), None)
+        .await?;
+
+      Some(random_seat)
+    } else {
+      // Account already in room, find available seat and update
+      let max_seat = (room.max_players().value() - 1) as u8;
+      let available_seats: Vec<u8> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
+
+      if available_seats.is_empty() {
+        return Ok(None);
+      }
+
+      // Pick a random available seat
+      use rand::Rng;
+      let mut rng = rand::rng();
+      let random_index = rng.random_range(0..available_seats.len());
+      let random_seat = SeatNumber::from(available_seats[random_index]);
+
+      // Update seat directly
+      self
+        .room_repository
+        .update_participant_seat(room_id, account_id, Some(random_seat))
+        .await?;
+
+      Some(random_seat)
+    };
+
+    // Verify the seat is still available (race condition check)
+    if let Some(seat) = random_seat {
+      if let Some(existing) = self.room_repository.get_participant_by_seat(room_id, seat).await?
+        && existing.account_id() != account_id
+      {
+        return Ok(None); // Seat was taken between checking and attempting
+      }
+
+      // Check if room is full
+      let sitting_count = self.room_repository.count_sitting_participants(room_id).await?;
+      if sitting_count > room.max_players().value() {
+        return Ok(None);
+      }
+
+      Ok(Some(seat))
+    } else {
+      Ok(None)
+    }
+  }
+}

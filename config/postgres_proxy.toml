@@ -1,0 +1,18 @@
+# all fields are required
+[postgres]
+user = "postgres"
+password = "Pwd123"
+host = "localhost"
+port = "15432"
+version = "17"
+
+[docker]
+container_name = "postgres_db"
+volume_name = "postgres_data"
+timezone = "Asia/Shanghai"
+
+[timing]
+initial_wait_seconds = 5
+container_start_wait_seconds = 3
+max_postgres_retries = 30
+retry_delay_seconds = 1
