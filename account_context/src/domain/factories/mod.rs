@@ -1,3 +1,3 @@
-mod account_factory;
+mod user_factory;
 
-pub use account_factory::AccountFactory;
+pub use user_factory::UserFactory;

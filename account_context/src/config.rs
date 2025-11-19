@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use crate::error::{AccountError, ConfigError};
+use crate::error::{ConfigError, UserError};
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -19,15 +19,15 @@ pub struct Config {
 }
 
 impl Config {
-  pub fn load() -> Result<Self, AccountError> {
+  pub fn load() -> Result<Self, UserError> {
     let config_path = find_config_file().ok_or_else(|| {
-      AccountError::Config(ConfigError::FileNotFound(
-        "config/account_context.toml not found in workspace root".to_string(),
+      UserError::Config(ConfigError::FileNotFound(
+        "config/user_context.toml not found in workspace root".to_string(),
       ))
     })?;
 
     let contents = std::fs::read_to_string(&config_path).map_err(|e| {
-      AccountError::Config(ConfigError::FileNotFound(format!(
+      UserError::Config(ConfigError::FileNotFound(format!(
         "Failed to read config file {}: {}",
         config_path.display(),
         e
@@ -35,7 +35,7 @@ impl Config {
     })?;
 
     #[derive(Deserialize)]
-    struct AccountSection {
+    struct UserSection {
       dsn: String,
       password_salt: String,
       server_addr: String,
@@ -69,46 +69,47 @@ impl Config {
 
     #[derive(Deserialize)]
     struct ConfigFile {
-      account: AccountSection,
+      user: UserSection,
     }
 
-    let config: ConfigFile =
-      toml::from_str(&contents).map_err(|e| AccountError::Config(ConfigError::ParseError(e)))?;
+    let config: ConfigFile = toml::from_str(&contents).map_err(|e| UserError::Config(ConfigError::ParseError(e)))?;
+
+    let section = config.user;
 
     Ok(Config {
-      dsn: config.account.dsn,
-      password_salt: config.account.password_salt,
-      server_addr: config.account.server_addr,
-      max_connections: config.account.max_connections,
-      min_connections: config.account.min_connections,
-      acquire_timeout_seconds: config.account.acquire_timeout_seconds,
-      idle_timeout_seconds: config.account.idle_timeout_seconds,
-      max_lifetime_seconds: config.account.max_lifetime_seconds,
-      session_duration_hours: config.account.session_duration_hours,
+      dsn: section.dsn,
+      password_salt: section.password_salt,
+      server_addr: section.server_addr,
+      max_connections: section.max_connections,
+      min_connections: section.min_connections,
+      acquire_timeout_seconds: section.acquire_timeout_seconds,
+      idle_timeout_seconds: section.idle_timeout_seconds,
+      max_lifetime_seconds: section.max_lifetime_seconds,
+      session_duration_hours: section.session_duration_hours,
     })
   }
 }
 
 fn find_config_file() -> Option<PathBuf> {
-  // Try to find config/account_context.toml in workspace root
+  // Try to find config file (user_context.toml)
   if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
     let manifest_path = PathBuf::from(manifest_dir);
     // If we're in a workspace, go up to find the workspace root
     if let Some(parent) = manifest_path.parent() {
-      let config_path = parent.join("config").join("account_context.toml");
-      if config_path.exists() {
-        return Some(config_path);
+      let user_config_path = parent.join("config").join("user_context.toml");
+      if user_config_path.exists() {
+        return Some(user_config_path);
       }
     }
   }
 
-  // Walk up from current directory looking for config/account_context.toml
+  // Walk up from current directory looking for config file
   let mut current = env::current_dir().ok()?;
 
   for _ in 0..10 {
-    let config_path = current.join("config").join("account_context.toml");
-    if config_path.exists() {
-      return Some(config_path);
+    let user_config_path = current.join("config").join("user_context.toml");
+    if user_config_path.exists() {
+      return Some(user_config_path);
     }
 
     if let Some(parent) = current.parent() {

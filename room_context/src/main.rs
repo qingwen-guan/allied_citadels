@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, put};
 use clap::Parser;
 use room_context::{
-  AccountId, Config, MaxPlayers, PostgresMessageRepository, PostgresRoomRepository, RoomError, RoomId, RoomService,
+  Config, MaxPlayers, PostgresMessageRepository, PostgresRoomRepository, RoomError, RoomId, RoomService, UserId,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
@@ -87,10 +87,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   // Handle commands that don't need RoomService
   if let cli::Command::Migrates { command } = &cli.command {
     match command {
-      cli::MigrateCommand::CreateAccountTable => {
-        // TODO: load Config, rather than account_context::Config
-        let account_config = account_context::Config::load()?;
-        account_context::create_account_table(&account_config.dsn).await?;
+      cli::MigrateCommand::CreateUserTable => {
+        let user_config = account_context::Config::load()?;
+        account_context::create_user_table(&user_config.dsn).await?;
       },
       cli::MigrateCommand::CreateRoomTable => {
         let config = Config::load()?;
@@ -100,13 +99,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let config = Config::load()?;
         room_context::drop_room_table(&config).await?;
       },
-      cli::MigrateCommand::CreateRoomToAccountMessageTable => {
+      cli::MigrateCommand::CreateRoomToUserMessageTable => {
         let config = Config::load()?;
-        room_context::create_room_to_account_message_table(&config).await?;
+        room_context::create_room_to_user_message_table(&config).await?;
       },
-      cli::MigrateCommand::CreateAccountToRoomMessageTable => {
+      cli::MigrateCommand::CreateUserToRoomMessageTable => {
         let config = Config::load()?;
-        room_context::create_account_to_room_message_table(&config).await?;
+        room_context::create_user_to_room_message_table(&config).await?;
       },
       cli::MigrateCommand::DropAllTables => {
         let config = Config::load()?;
@@ -187,7 +186,7 @@ async fn create_room(
   State(service): State<Arc<RoomService>>, Json(payload): Json<CreateRoomRequest>,
 ) -> Result<Json<RoomResponse>, AppError> {
   let creator_uuid = payload.creator.parse::<Uuid>().map_err(|_| AppError::InvalidUuid)?;
-  let creator = AccountId::from(creator_uuid);
+  let creator = UserId::from(creator_uuid);
   let max_players =
     MaxPlayers::try_from(payload.max_players).map_err(|_| AppError::Room(RoomError::InvalidMaxPlayers))?;
   let room = service.create_room(&payload.name, creator, max_players).await?;

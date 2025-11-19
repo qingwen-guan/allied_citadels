@@ -2,11 +2,11 @@ use std::fmt;
 
 use uuid::Uuid;
 
-/// AccountToRoomMessageId - value object for account to room message UUID to provide type safety
+/// RoomToUserMessageId - value object for room to user message UUID to provide type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AccountToRoomMessageId(Uuid);
+pub struct RoomToUserMessageId(Uuid);
 
-impl AccountToRoomMessageId {
+impl RoomToUserMessageId {
   pub fn new(value: Uuid) -> Self {
     Self(value)
   }
@@ -16,26 +16,26 @@ impl AccountToRoomMessageId {
   }
 }
 
-impl fmt::Display for AccountToRoomMessageId {
+impl fmt::Display for RoomToUserMessageId {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "{}", self.0)
   }
 }
 
-impl From<Uuid> for AccountToRoomMessageId {
+impl From<Uuid> for RoomToUserMessageId {
   fn from(value: Uuid) -> Self {
     Self::new(value)
   }
 }
 
-impl From<AccountToRoomMessageId> for Uuid {
-  fn from(value: AccountToRoomMessageId) -> Self {
+impl From<RoomToUserMessageId> for Uuid {
+  fn from(value: RoomToUserMessageId) -> Self {
     value.value()
   }
 }
 
 // Implement sqlx traits to allow direct binding
-impl<'q> sqlx::Encode<'q, sqlx::Postgres> for AccountToRoomMessageId {
+impl<'q> sqlx::Encode<'q, sqlx::Postgres> for RoomToUserMessageId {
   fn encode_by_ref(
     &self, buf: &mut sqlx::postgres::PgArgumentBuffer,
   ) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
@@ -43,14 +43,14 @@ impl<'q> sqlx::Encode<'q, sqlx::Postgres> for AccountToRoomMessageId {
   }
 }
 
-impl<'r> sqlx::Decode<'r, sqlx::Postgres> for AccountToRoomMessageId {
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for RoomToUserMessageId {
   fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
     let uuid = Uuid::decode(value)?;
-    Ok(AccountToRoomMessageId::from(uuid))
+    Ok(RoomToUserMessageId::from(uuid))
   }
 }
 
-impl sqlx::Type<sqlx::Postgres> for AccountToRoomMessageId {
+impl sqlx::Type<sqlx::Postgres> for RoomToUserMessageId {
   fn type_info() -> sqlx::postgres::PgTypeInfo {
     <Uuid as sqlx::Type<sqlx::Postgres>>::type_info()
   }

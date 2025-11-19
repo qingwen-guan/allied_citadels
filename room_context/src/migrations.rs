@@ -108,11 +108,11 @@ pub async fn create_room_participant_table(config: &Config) -> Result<(), RoomEr
     r#"
     CREATE TABLE IF NOT EXISTS room_participant (
         room_id UUID NOT NULL REFERENCES room(id) ON DELETE CASCADE,
-        account_id UUID NOT NULL,
+        user_id UUID NOT NULL,
         seat_number SMALLINT CHECK (seat_number IS NULL OR (seat_number >= 0 AND seat_number <= 5)),
         viewing_seat_number SMALLINT CHECK (viewing_seat_number IS NULL OR (viewing_seat_number >= 0 AND viewing_seat_number <= 5)),
         joined_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (room_id, account_id),
+        PRIMARY KEY (room_id, user_id),
         UNIQUE (room_id, seat_number) WHERE seat_number IS NOT NULL
     )
     "#,
@@ -126,7 +126,7 @@ pub async fn create_room_participant_table(config: &Config) -> Result<(), RoomEr
     .await
     .map_err(RoomError::Database)?;
 
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_participant_account_id ON room_participant(account_id)")
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_participant_user_id ON room_participant(user_id)")
     .execute(&pool)
     .await
     .map_err(RoomError::Database)?;
@@ -143,14 +143,14 @@ pub async fn create_room_participant_table(config: &Config) -> Result<(), RoomEr
   println!("Room participant table created successfully!");
   println!("{}", "=".repeat(40));
   println!("Table: room_participant");
-  println!("Columns: room_id, account_id, seat_number, joined_at");
+  println!("Columns: room_id, user_id, seat_number, joined_at");
   println!();
 
   Ok(())
 }
 
-pub async fn create_room_to_account_message_table(config: &Config) -> Result<(), RoomError> {
-  println!("Creating room_to_account_message table...");
+pub async fn create_room_to_user_message_table(config: &Config) -> Result<(), RoomError> {
+  println!("Creating room_to_user_message table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
@@ -164,7 +164,7 @@ pub async fn create_room_to_account_message_table(config: &Config) -> Result<(),
     SELECT EXISTS (
       SELECT FROM information_schema.tables 
       WHERE table_schema = 'public' 
-      AND table_name = 'room_to_account_message'
+      AND table_name = 'room_to_user_message'
     )
     "#,
   )
@@ -173,17 +173,17 @@ pub async fn create_room_to_account_message_table(config: &Config) -> Result<(),
   .map_err(RoomError::Database)?;
 
   if table_exists {
-    println!("Table room_to_account_message already exists.");
+    println!("Table room_to_user_message already exists.");
     println!();
     return Ok(());
   }
 
   sqlx::query(
     r#"
-    CREATE TABLE IF NOT EXISTS room_to_account_message (
+    CREATE TABLE IF NOT EXISTS room_to_user_message (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         room_id UUID NOT NULL REFERENCES room(id) ON DELETE CASCADE,
-        account_id UUID NOT NULL,
+        user_id UUID NOT NULL,
         topic VARCHAR(255) NOT NULL,
         content TEXT NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -195,48 +195,44 @@ pub async fn create_room_to_account_message_table(config: &Config) -> Result<(),
   .await
   .map_err(RoomError::Database)?;
 
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_to_account_message_room_id ON room_to_account_message(room_id)")
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_to_user_message_room_id ON room_to_user_message(room_id)")
     .execute(&pool)
     .await
     .map_err(RoomError::Database)?;
 
-  sqlx::query(
-    "CREATE INDEX IF NOT EXISTS idx_room_to_account_message_account_id ON room_to_account_message(account_id)",
-  )
-  .execute(&pool)
-  .await
-  .map_err(RoomError::Database)?;
-
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_to_account_message_topic ON room_to_account_message(topic)")
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_to_user_message_user_id ON room_to_user_message(user_id)")
     .execute(&pool)
     .await
     .map_err(RoomError::Database)?;
 
-  sqlx::query(
-    "CREATE INDEX IF NOT EXISTS idx_room_to_account_message_created_at ON room_to_account_message(created_at)",
-  )
-  .execute(&pool)
-  .await
-  .map_err(RoomError::Database)?;
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_to_user_message_topic ON room_to_user_message(topic)")
+    .execute(&pool)
+    .await
+    .map_err(RoomError::Database)?;
 
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_to_account_message_read_at ON room_to_account_message(read_at)")
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_to_user_message_created_at ON room_to_user_message(created_at)")
+    .execute(&pool)
+    .await
+    .map_err(RoomError::Database)?;
+
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_room_to_user_message_read_at ON room_to_user_message(read_at)")
     .execute(&pool)
     .await
     .map_err(RoomError::Database)?;
 
   println!();
   println!("{}", "=".repeat(40));
-  println!("Room to account message table created successfully!");
+  println!("Room to user message table created successfully!");
   println!("{}", "=".repeat(40));
-  println!("Table: room_to_account_message");
-  println!("Columns: id, room_id, account_id, topic, content, created_at, read_at");
+  println!("Table: room_to_user_message");
+  println!("Columns: id, room_id, user_id, topic, content, created_at, read_at");
   println!();
 
   Ok(())
 }
 
-pub async fn create_account_to_room_message_table(config: &Config) -> Result<(), RoomError> {
-  println!("Creating account_to_room_message table...");
+pub async fn create_user_to_room_message_table(config: &Config) -> Result<(), RoomError> {
+  println!("Creating user_to_room_message table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
@@ -250,7 +246,7 @@ pub async fn create_account_to_room_message_table(config: &Config) -> Result<(),
     SELECT EXISTS (
       SELECT FROM information_schema.tables 
       WHERE table_schema = 'public' 
-      AND table_name = 'account_to_room_message'
+      AND table_name = 'user_to_room_message'
     )
     "#,
   )
@@ -259,17 +255,17 @@ pub async fn create_account_to_room_message_table(config: &Config) -> Result<(),
   .map_err(RoomError::Database)?;
 
   if table_exists {
-    println!("Table account_to_room_message already exists.");
+    println!("Table user_to_room_message already exists.");
     println!();
     return Ok(());
   }
 
   sqlx::query(
     r#"
-    CREATE TABLE IF NOT EXISTS account_to_room_message (
+    CREATE TABLE IF NOT EXISTS user_to_room_message (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         room_id UUID NOT NULL REFERENCES room(id) ON DELETE CASCADE,
-        account_id UUID NOT NULL,
+        user_id UUID NOT NULL,
         topic VARCHAR(255) NOT NULL,
         content TEXT NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
@@ -281,41 +277,37 @@ pub async fn create_account_to_room_message_table(config: &Config) -> Result<(),
   .await
   .map_err(RoomError::Database)?;
 
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_account_to_room_message_room_id ON account_to_room_message(room_id)")
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_room_id ON user_to_room_message(room_id)")
     .execute(&pool)
     .await
     .map_err(RoomError::Database)?;
 
-  sqlx::query(
-    "CREATE INDEX IF NOT EXISTS idx_account_to_room_message_account_id ON account_to_room_message(account_id)",
-  )
-  .execute(&pool)
-  .await
-  .map_err(RoomError::Database)?;
-
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_account_to_room_message_topic ON account_to_room_message(topic)")
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_user_id ON user_to_room_message(user_id)")
     .execute(&pool)
     .await
     .map_err(RoomError::Database)?;
 
-  sqlx::query(
-    "CREATE INDEX IF NOT EXISTS idx_account_to_room_message_created_at ON account_to_room_message(created_at)",
-  )
-  .execute(&pool)
-  .await
-  .map_err(RoomError::Database)?;
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_topic ON user_to_room_message(topic)")
+    .execute(&pool)
+    .await
+    .map_err(RoomError::Database)?;
 
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_account_to_room_message_read_at ON account_to_room_message(read_at)")
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_created_at ON user_to_room_message(created_at)")
+    .execute(&pool)
+    .await
+    .map_err(RoomError::Database)?;
+
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_read_at ON user_to_room_message(read_at)")
     .execute(&pool)
     .await
     .map_err(RoomError::Database)?;
 
   println!();
   println!("{}", "=".repeat(40));
-  println!("Account to room message table created successfully!");
+  println!("User to room message table created successfully!");
   println!("{}", "=".repeat(40));
-  println!("Table: account_to_room_message");
-  println!("Columns: id, room_id, account_id, topic, content, created_at, read_at");
+  println!("Table: user_to_room_message");
+  println!("Columns: id, room_id, user_id, topic, content, created_at, read_at");
   println!();
 
   Ok(())

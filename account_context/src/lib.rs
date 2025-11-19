@@ -1,18 +1,18 @@
-mod account_service;
 mod config;
 mod domain;
 mod error;
 mod infra;
 mod migrations;
+mod user_service;
 
-pub use account_service::AccountService;
 pub use config::Config;
+pub use user_service::UserService;
 // Re-export Salt from domain module (which already exports it from valueobjects)
-pub use domain::valueobjects::{AccountId, AccountToAccountMessageId, Salt, SessionId};
+pub use domain::valueobjects::{Salt, SessionId, UserId, UserToUserMessageId};
 pub use domain::{
-  Account, AccountFactory, AccountManager, AccountRepository, AccountToAccountMessage,
-  AccountToAccountMessageDetails, AccountToAccountRawMessage, SessionManager, SessionStatus,
+  SessionInfo, SessionManager, SessionStatus, User, UserFactory, UserManager, UserRepository, UserToUserMessage,
+  UserToUserMessageDetails, UserToUserRawMessage,
 };
-pub use error::AccountError;
-pub use infra::{PostgresAccountRepository, PostgresSessionRepository};
-pub use migrations::{create_account_session_table, create_account_table, drop_table_account_session};
+pub use error::UserError;
+pub use infra::{PostgresSessionRepository, PostgresUserRepository};
+pub use migrations::{create_user_session_table, create_user_table, drop_table_user_session};

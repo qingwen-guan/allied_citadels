@@ -1,9 +1,9 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::domain::valueobjects::{AccountId, SessionId};
+use crate::domain::valueobjects::{SessionId, UserId};
 use crate::domain::{SessionInfo, SessionRepository};
-use crate::error::AccountError;
+use crate::error::UserError;
 
 /// PostgreSQL implementation of SessionRepository
 pub struct PostgresSessionRepository {
@@ -19,11 +19,11 @@ impl PostgresSessionRepository {
 #[async_trait::async_trait]
 impl SessionRepository for PostgresSessionRepository {
   async fn create(
-    &self, session_id: SessionId, account_id: AccountId, expires_at: chrono::DateTime<chrono::Utc>,
-  ) -> Result<(), AccountError> {
-    sqlx::query("INSERT INTO account_session (session_id, account_id, expires_at) VALUES ($1, $2, $3)")
+    &self, session_id: SessionId, user_id: UserId, expires_at: chrono::DateTime<chrono::Utc>,
+  ) -> Result<(), UserError> {
+    sqlx::query("INSERT INTO user_session (id, user_id, expires_at) VALUES ($1, $2, $3)")
       .bind(session_id)
-      .bind(account_id)
+      .bind(user_id)
       .bind(expires_at)
       .execute(&self.pool)
       .await?;
@@ -33,24 +33,23 @@ impl SessionRepository for PostgresSessionRepository {
 
   async fn find_by_session_id(
     &self, session_id: SessionId,
-  ) -> Result<Option<(AccountId, chrono::DateTime<chrono::Utc>)>, AccountError> {
+  ) -> Result<Option<(UserId, chrono::DateTime<chrono::Utc>)>, UserError> {
     #[derive(sqlx::FromRow)]
     struct SessionRow {
-      account_id: Uuid,
+      user_id: Uuid,
       expires_at: chrono::DateTime<chrono::Utc>,
     }
 
-    let result: Option<SessionRow> =
-      sqlx::query_as("SELECT account_id, expires_at FROM account_session WHERE session_id = $1")
-        .bind(session_id)
-        .fetch_optional(&self.pool)
-        .await?;
+    let result: Option<SessionRow> = sqlx::query_as("SELECT user_id, expires_at FROM user_session WHERE id = $1")
+      .bind(session_id)
+      .fetch_optional(&self.pool)
+      .await?;
 
-    Ok(result.map(|row| (AccountId::from(row.account_id), row.expires_at)))
+    Ok(result.map(|row| (UserId::from(row.user_id), row.expires_at)))
   }
 
-  async fn delete(&self, session_id: SessionId) -> Result<bool, AccountError> {
-    let rows_affected = sqlx::query("DELETE FROM account_session WHERE session_id = $1")
+  async fn delete(&self, session_id: SessionId) -> Result<bool, UserError> {
+    let rows_affected = sqlx::query("DELETE FROM user_session WHERE id = $1")
       .bind(session_id)
       .execute(&self.pool)
       .await?
@@ -59,8 +58,8 @@ impl SessionRepository for PostgresSessionRepository {
     Ok(rows_affected > 0)
   }
 
-  async fn delete_expired(&self) -> Result<u64, AccountError> {
-    let rows_affected = sqlx::query("DELETE FROM account_session WHERE expires_at < NOW()")
+  async fn delete_expired(&self) -> Result<u64, UserError> {
+    let rows_affected = sqlx::query("DELETE FROM user_session WHERE expires_at < NOW()")
       .execute(&self.pool)
       .await?
       .rows_affected();
@@ -68,9 +67,9 @@ impl SessionRepository for PostgresSessionRepository {
     Ok(rows_affected)
   }
 
-  async fn delete_by_account_id(&self, account_id: AccountId) -> Result<u64, AccountError> {
-    let rows_affected = sqlx::query("DELETE FROM account_session WHERE account_id = $1")
-      .bind(account_id)
+  async fn delete_by_user_id(&self, user_id: UserId) -> Result<u64, UserError> {
+    let rows_affected = sqlx::query("DELETE FROM user_session WHERE user_id = $1")
+      .bind(user_id)
       .execute(&self.pool)
       .await?
       .rows_affected();
@@ -78,14 +77,14 @@ impl SessionRepository for PostgresSessionRepository {
     Ok(rows_affected)
   }
 
-  async fn update_expiration_by_account_id(
-    &self, account_id: AccountId, expires_at: chrono::DateTime<chrono::Utc>,
-  ) -> Result<u64, AccountError> {
+  async fn update_expiration_by_user_id(
+    &self, user_id: UserId, expires_at: chrono::DateTime<chrono::Utc>,
+  ) -> Result<u64, UserError> {
     let rows_affected = sqlx::query(
-      "UPDATE account_session SET expires_at = LEAST(expires_at, $1) WHERE account_id = $2 AND expires_at > NOW()",
+      "UPDATE user_session SET expires_at = LEAST(expires_at, $1) WHERE user_id = $2 AND expires_at > NOW()",
     )
     .bind(expires_at)
-    .bind(account_id)
+    .bind(user_id)
     .execute(&self.pool)
     .await?
     .rows_affected();
@@ -93,11 +92,11 @@ impl SessionRepository for PostgresSessionRepository {
     Ok(rows_affected)
   }
 
-  async fn list_all(&self) -> Result<Vec<SessionInfo>, AccountError> {
+  async fn list_all(&self) -> Result<Vec<SessionInfo>, UserError> {
     #[derive(sqlx::FromRow)]
     struct SessionRow {
-      session_id: Uuid,
-      account_id: Uuid,
+      id: Uuid,
+      user_id: Uuid,
       created_at: chrono::DateTime<chrono::Utc>,
       expires_at: chrono::DateTime<chrono::Utc>,
       is_expired: bool,
@@ -107,8 +106,8 @@ impl SessionRepository for PostgresSessionRepository {
     let rows: Vec<SessionRow> = sqlx::query_as(
       r#"
 SELECT 
-    session_id,
-    account_id,
+    id,
+    user_id,
     created_at,
     expires_at,
     CASE WHEN expires_at < NOW() THEN true ELSE false END as is_expired,
@@ -117,7 +116,7 @@ SELECT
         WHEN expires_at < NOW() + INTERVAL '1 minute' THEN 'expiring'
         ELSE 'active'
     END as status
-FROM account_session
+FROM user_session
 ORDER BY created_at DESC
 "#,
     )
@@ -149,8 +148,8 @@ ORDER BY created_at DESC
             },
           };
           SessionInfo {
-            session_id: SessionId::from(row.session_id),
-            account_id: AccountId::from(row.account_id),
+            session_id: SessionId::from(row.id),
+            user_id: UserId::from(row.user_id),
             created_at: row.created_at,
             expires_at: row.expires_at,
             is_expired: row.is_expired,
@@ -161,11 +160,11 @@ ORDER BY created_at DESC
     )
   }
 
-  async fn list_non_expired(&self) -> Result<Vec<SessionInfo>, AccountError> {
+  async fn list_non_expired(&self) -> Result<Vec<SessionInfo>, UserError> {
     #[derive(sqlx::FromRow)]
     struct SessionRow {
-      session_id: Uuid,
-      account_id: Uuid,
+      id: Uuid,
+      user_id: Uuid,
       created_at: chrono::DateTime<chrono::Utc>,
       expires_at: chrono::DateTime<chrono::Utc>,
       is_expired: bool,
@@ -175,8 +174,8 @@ ORDER BY created_at DESC
     let rows: Vec<SessionRow> = sqlx::query_as(
       r#"
 SELECT 
-    session_id,
-    account_id,
+    id,
+    user_id,
     created_at,
     expires_at,
     CASE WHEN expires_at < NOW() THEN true ELSE false END as is_expired,
@@ -185,7 +184,7 @@ SELECT
         WHEN expires_at < NOW() + INTERVAL '1 minute' THEN 'expiring'
         ELSE 'active'
     END as status
-FROM account_session
+FROM user_session
 WHERE expires_at >= NOW()
 ORDER BY created_at DESC
 "#,
@@ -218,8 +217,8 @@ ORDER BY created_at DESC
             },
           };
           SessionInfo {
-            session_id: SessionId::from(row.session_id),
-            account_id: AccountId::from(row.account_id),
+            session_id: SessionId::from(row.id),
+            user_id: UserId::from(row.user_id),
             created_at: row.created_at,
             expires_at: row.expires_at,
             is_expired: row.is_expired,
@@ -230,11 +229,11 @@ ORDER BY created_at DESC
     )
   }
 
-  async fn get_by_session_id(&self, session_id: SessionId) -> Result<Option<SessionInfo>, AccountError> {
+  async fn get_by_session_id(&self, session_id: SessionId) -> Result<Option<SessionInfo>, UserError> {
     #[derive(sqlx::FromRow)]
     struct SessionRow {
-      session_id: Uuid,
-      account_id: Uuid,
+      id: Uuid,
+      user_id: Uuid,
       created_at: chrono::DateTime<chrono::Utc>,
       expires_at: chrono::DateTime<chrono::Utc>,
       is_expired: bool,
@@ -244,8 +243,8 @@ ORDER BY created_at DESC
     let row: Option<SessionRow> = sqlx::query_as(
       r#"
 SELECT 
-    session_id,
-    account_id,
+    id,
+    user_id,
     created_at,
     expires_at,
     CASE WHEN expires_at < NOW() THEN true ELSE false END as is_expired,
@@ -254,8 +253,8 @@ SELECT
         WHEN expires_at < NOW() + INTERVAL '1 minute' THEN 'expiring'
         ELSE 'active'
     END as status
-FROM account_session
-WHERE session_id = $1
+FROM user_session
+WHERE id = $1
 "#,
     )
     .bind(session_id)
@@ -284,8 +283,8 @@ WHERE session_id = $1
         },
       };
       SessionInfo {
-        session_id: SessionId::from(row.session_id),
-        account_id: AccountId::from(row.account_id),
+        session_id: SessionId::from(row.id),
+        user_id: UserId::from(row.user_id),
         created_at: row.created_at,
         expires_at: row.expires_at,
         is_expired: row.is_expired,

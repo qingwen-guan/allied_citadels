@@ -4,8 +4,8 @@ mod managers;
 mod repositories;
 pub mod valueobjects;
 
-pub use entities::{Account, AccountToAccountMessage, AccountToAccountMessageDetails, AccountToAccountRawMessage};
-pub use factories::AccountFactory;
-pub use managers::{AccountManager, SessionManager};
-pub use repositories::{AccountRepository, SessionInfo, SessionRepository, SessionStatus};
+pub use entities::{User, UserToUserMessage, UserToUserMessageDetails, UserToUserRawMessage};
+pub use factories::UserFactory;
+pub use managers::{SessionManager, UserManager};
+pub use repositories::{SessionInfo, SessionRepository, SessionStatus, UserRepository};
 pub use valueobjects::{NickName, SaltedPassword};

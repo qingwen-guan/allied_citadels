@@ -1,4 +1,4 @@
-use account_context::AccountId;
+use account_context::UserId;
 use sqlx::PgPool;
 
 use crate::domain::repositories::{Pagination, RoomRepository};
@@ -54,7 +54,7 @@ impl RoomRepository for PostgresRoomRepository {
     Ok(rooms)
   }
 
-  async fn create(&self, creator: AccountId, name: &RoomName, max_players: MaxPlayers) -> Result<Room, RoomError> {
+  async fn create(&self, creator: UserId, name: &RoomName, max_players: MaxPlayers) -> Result<Room, RoomError> {
     // Get next available room number
     let number = self.get_next_room_number().await?;
 
@@ -91,7 +91,7 @@ impl RoomRepository for PostgresRoomRepository {
   }
 
   async fn update_max_players(&self, id: RoomId, max_players: MaxPlayers) -> Result<bool, RoomError> {
-    // Note: standing up all accounts and emitting events is handled by room_manager
+    // Note: standing up all users and emitting events is handled by room_manager
     let rows_affected = sqlx::query("UPDATE room SET max_players = $1 WHERE id = $2")
       .bind(max_players)
       .bind(id)
@@ -103,7 +103,7 @@ impl RoomRepository for PostgresRoomRepository {
   }
 
   async fn delete(&self, id: RoomId) -> Result<bool, RoomError> {
-    // Note: emitting delete_room event to all accounts is handled by room_service
+    // Note: emitting delete_room event to all users is handled by room_service
     let rows_affected = sqlx::query("DELETE FROM room WHERE id = $1")
       .bind(id)
       .execute(&self.pool)
@@ -146,18 +146,17 @@ impl RoomRepository for PostgresRoomRepository {
   }
 
   async fn add_participant(
-    &self, room_id: RoomId, account_id: AccountId, seat_number: Option<SeatNumber>,
-    viewing_seat_number: Option<SeatNumber>,
+    &self, room_id: RoomId, user_id: UserId, seat_number: Option<SeatNumber>, viewing_seat_number: Option<SeatNumber>,
   ) -> Result<RoomParticipant, RoomError> {
     let joined_at = chrono::Utc::now();
     sqlx::query(
-      "INSERT INTO room_participant (room_id, account_id, seat_number, viewing_seat_number, joined_at)
+      "INSERT INTO room_participant (room_id, user_id, seat_number, viewing_seat_number, joined_at)
 VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (room_id, account_id) DO UPDATE
+ON CONFLICT (room_id, user_id) DO UPDATE
 SET seat_number = EXCLUDED.seat_number, viewing_seat_number = EXCLUDED.viewing_seat_number, joined_at = EXCLUDED.joined_at",
     )
     .bind(room_id)
-    .bind(account_id)
+    .bind(user_id)
     .bind(seat_number)
     .bind(viewing_seat_number)
     .bind(joined_at)
@@ -166,17 +165,17 @@ SET seat_number = EXCLUDED.seat_number, viewing_seat_number = EXCLUDED.viewing_s
 
     Ok(RoomParticipant::new(
       room_id,
-      account_id,
+      user_id,
       seat_number,
       viewing_seat_number,
       joined_at,
     ))
   }
 
-  async fn remove_participant(&self, room_id: RoomId, account_id: AccountId) -> Result<bool, RoomError> {
-    let rows_affected = sqlx::query("DELETE FROM room_participant WHERE room_id = $1 AND account_id = $2")
+  async fn remove_participant(&self, room_id: RoomId, user_id: UserId) -> Result<bool, RoomError> {
+    let rows_affected = sqlx::query("DELETE FROM room_participant WHERE room_id = $1 AND user_id = $2")
       .bind(room_id)
-      .bind(account_id)
+      .bind(user_id)
       .execute(&self.pool)
       .await?
       .rows_affected();
@@ -186,7 +185,7 @@ SET seat_number = EXCLUDED.seat_number, viewing_seat_number = EXCLUDED.viewing_s
 
   async fn get_participants(&self, room_id: RoomId) -> Result<Vec<RoomParticipant>, RoomError> {
     let participants = sqlx::query_as::<_, RoomParticipant>(
-      "SELECT room_id, account_id, seat_number, viewing_seat_number, joined_at
+      "SELECT room_id, user_id, seat_number, viewing_seat_number, joined_at
 FROM room_participant
 WHERE room_id = $1",
     )
@@ -197,16 +196,14 @@ WHERE room_id = $1",
     Ok(participants)
   }
 
-  async fn get_participant(
-    &self, room_id: RoomId, account_id: AccountId,
-  ) -> Result<Option<RoomParticipant>, RoomError> {
+  async fn get_participant(&self, room_id: RoomId, user_id: UserId) -> Result<Option<RoomParticipant>, RoomError> {
     let participant = sqlx::query_as::<_, RoomParticipant>(
-      "SELECT room_id, account_id, seat_number, viewing_seat_number, joined_at
+      "SELECT room_id, user_id, seat_number, viewing_seat_number, joined_at
 FROM room_participant
-WHERE room_id = $1 AND account_id = $2",
+WHERE room_id = $1 AND user_id = $2",
     )
     .bind(room_id)
-    .bind(account_id)
+    .bind(user_id)
     .fetch_optional(&self.pool)
     .await?;
 
@@ -217,7 +214,7 @@ WHERE room_id = $1 AND account_id = $2",
     &self, room_id: RoomId, seat_number: SeatNumber,
   ) -> Result<Option<RoomParticipant>, RoomError> {
     let participant = sqlx::query_as::<_, RoomParticipant>(
-      "SELECT room_id, account_id, seat_number, viewing_seat_number, joined_at
+      "SELECT room_id, user_id, seat_number, viewing_seat_number, joined_at
 FROM room_participant
 WHERE room_id = $1 AND seat_number = $2",
     )
@@ -230,15 +227,15 @@ WHERE room_id = $1 AND seat_number = $2",
   }
 
   async fn update_participant_seat(
-    &self, room_id: RoomId, account_id: AccountId, new_seat: Option<SeatNumber>,
+    &self, room_id: RoomId, user_id: UserId, new_seat: Option<SeatNumber>,
   ) -> Result<bool, RoomError> {
     let rows_affected = sqlx::query(
       "UPDATE room_participant
 SET seat_number = $3, viewing_seat_number = NULL
-WHERE room_id = $1 AND account_id = $2",
+WHERE room_id = $1 AND user_id = $2",
     )
     .bind(room_id)
-    .bind(account_id)
+    .bind(user_id)
     .bind(new_seat)
     .execute(&self.pool)
     .await?
@@ -248,10 +245,10 @@ WHERE room_id = $1 AND account_id = $2",
   }
 
   async fn update_participant_viewing(
-    &self, room_id: RoomId, account_id: AccountId, viewing_seat: Option<SeatNumber>,
+    &self, room_id: RoomId, user_id: UserId, viewing_seat: Option<SeatNumber>,
   ) -> Result<bool, RoomError> {
-    // Check if the account is seated, only update viewing_seat_number if the account is NOT seated
-    let participant = self.get_participant(room_id, account_id).await?;
+    // Check if the user is seated, only update viewing_seat_number if the user is NOT seated
+    let participant = self.get_participant(room_id, user_id).await?;
     if let Some(p) = participant
       && p.is_sitting()
     {
@@ -263,10 +260,10 @@ WHERE room_id = $1 AND account_id = $2",
     let rows_affected = sqlx::query(
       "UPDATE room_participant
 SET viewing_seat_number = $3
-WHERE room_id = $1 AND account_id = $2",
+WHERE room_id = $1 AND user_id = $2",
     )
     .bind(room_id)
-    .bind(account_id)
+    .bind(user_id)
     .bind(viewing_seat)
     .execute(&self.pool)
     .await?
@@ -275,14 +272,14 @@ WHERE room_id = $1 AND account_id = $2",
     Ok(rows_affected > 0)
   }
 
-  async fn stand_up_participant(&self, room_id: RoomId, account_id: AccountId) -> Result<bool, RoomError> {
+  async fn stand_up_participant(&self, room_id: RoomId, user_id: UserId) -> Result<bool, RoomError> {
     let rows_affected = sqlx::query(
       "UPDATE room_participant
 SET seat_number = NULL, viewing_seat_number = NULL
-WHERE room_id = $1 AND account_id = $2",
+WHERE room_id = $1 AND user_id = $2",
     )
     .bind(room_id)
-    .bind(account_id)
+    .bind(user_id)
     .execute(&self.pool)
     .await?
     .rows_affected();

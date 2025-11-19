@@ -1,8 +1,8 @@
-mod account;
-mod account_to_account_message;
-mod account_to_account_message_details;
-mod account_to_account_raw_message;
+mod user;
+mod user_to_user_message;
+mod user_to_user_message_details;
+mod user_to_user_raw_message;
 
-pub use account::Account;
-pub use account_to_account_message::{AccountToAccountMessage, AccountToAccountMessageDetails};
-pub use account_to_account_raw_message::AccountToAccountRawMessage;
+pub use user::User;
+pub use user_to_user_message::{UserToUserMessage, UserToUserMessageDetails};
+pub use user_to_user_raw_message::UserToUserRawMessage;

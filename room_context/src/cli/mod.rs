@@ -1,7 +1,8 @@
 mod list;
 
+use account_context::UserId;
 use clap::{Parser, Subcommand};
-use room_context::{AccountId, MaxPlayers, RoomId, RoomService};
+use room_context::{MaxPlayers, RoomId, RoomService};
 
 #[derive(Parser)]
 pub struct Cli {
@@ -53,12 +54,12 @@ pub enum MigrateCommand {
   CreateRoomTable,
   /// Drop the room table from the database
   DropRoomTable,
-  /// Create the room_to_account_message table in the database
-  CreateRoomToAccountMessageTable,
-  /// Create the account_to_room_message table in the database
-  CreateAccountToRoomMessageTable,
-  /// Create the account table in the database (delegated to account_context)
-  CreateAccountTable,
+  /// Create the room_to_user_message table in the database
+  CreateRoomToUserMessageTable,
+  /// Create the user_to_room_message table in the database
+  CreateUserToRoomMessageTable,
+  /// Create the user table in the database (delegated to account_context)
+  CreateUserTable,
   /// Drop all tables from the database
   DropAllTables,
 }
@@ -88,7 +89,7 @@ async fn handle_room_command(
       max_players,
     } => {
       let creator_uuid = creator.parse::<uuid::Uuid>()?;
-      let creator_id = AccountId::from(creator_uuid);
+      let creator_id = UserId::from(creator_uuid);
       let max_players = MaxPlayers::try_from(max_players)?;
       let room = room_service.create_room(&name, creator_id, max_players).await?;
       println!(

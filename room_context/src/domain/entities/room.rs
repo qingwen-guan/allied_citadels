@@ -1,4 +1,4 @@
-use account_context::AccountId;
+use account_context::UserId;
 use sqlx::Row;
 
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
@@ -8,7 +8,7 @@ pub struct Room {
   id: RoomId,
   number: RoomNumber,
   name: RoomName,
-  creator: AccountId,
+  creator: UserId,
   max_players: MaxPlayers,
   stand_by_limit: Option<usize>,
   created_at: chrono::DateTime<chrono::Utc>,
@@ -36,7 +36,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for Room {
 
 impl Room {
   pub fn new(
-    id: RoomId, number: RoomNumber, name: impl Into<RoomName>, creator: AccountId, max_players: MaxPlayers,
+    id: RoomId, number: RoomNumber, name: impl Into<RoomName>, creator: UserId, max_players: MaxPlayers,
     created_at: chrono::DateTime<chrono::Utc>, expires_at: chrono::DateTime<chrono::Utc>,
   ) -> Self {
     Self {
@@ -53,7 +53,7 @@ impl Room {
 
   #[allow(clippy::too_many_arguments)] // TODO: resolve it
   pub fn with_stand_by_limit(
-    id: RoomId, number: RoomNumber, name: impl Into<RoomName>, creator: AccountId, max_players: MaxPlayers,
+    id: RoomId, number: RoomNumber, name: impl Into<RoomName>, creator: UserId, max_players: MaxPlayers,
     stand_by_limit: Option<usize>, created_at: chrono::DateTime<chrono::Utc>,
     expires_at: chrono::DateTime<chrono::Utc>,
   ) -> Self {
@@ -81,7 +81,7 @@ impl Room {
     &self.name
   }
 
-  pub fn creator(&self) -> AccountId {
+  pub fn creator(&self) -> UserId {
     self.creator
   }
 

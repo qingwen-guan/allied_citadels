@@ -1,20 +1,22 @@
-use account_context::AccountService;
+use account_context::UserService;
 
 pub async fn execute(
-  account_service: AccountService, nickname: String, password: String,
+  user_service: UserService, nickname: String, password: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-  let session_id = account_service.login(&nickname, &password).await?;
+  let (session_id, _user_id) = user_service.login(&nickname, &password).await?;
 
-  // Get account info for display
-  let account = account_service.get_account_by_nickname(&nickname).await?;
-  if let Some(account) = account {
+  // Get user info for display
+  let user = user_service.get_user_by_nickname(&nickname).await?;
+  if let Some(user) = user {
+    // TODO: print user id
     println!(
       "Login successful! uuid: {}, nickname: {}, session_id: {}",
-      account.uuid(),
-      account.nickname().as_str(),
+      user.uuid(),
+      user.nickname().as_str(),
       session_id
     );
   } else {
+    // TODO: error
     println!("Login successful! session_id: {}", session_id);
   }
   Ok(())

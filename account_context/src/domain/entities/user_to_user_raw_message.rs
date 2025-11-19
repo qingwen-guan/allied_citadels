@@ -1,22 +1,22 @@
 use sqlx::Row;
 
-use crate::domain::valueobjects::{AccountId, AccountToAccountMessageId};
+use crate::domain::valueobjects::{UserId, UserToUserMessageId};
 
-/// AccountToAccountRawMessage - raw database representation of an account-to-account message
+/// UserToUserRawMessage - raw database representation of a user-to-user message
 #[derive(Debug, Clone)]
-pub struct AccountToAccountRawMessage {
-  id: AccountToAccountMessageId,
-  sender_id: AccountId,
-  receiver_id: AccountId,
+pub struct UserToUserRawMessage {
+  id: UserToUserMessageId,
+  sender_id: UserId,   // TODO:rename to from
+  receiver_id: UserId, // TODO: rename to to
   topic: String,
   content: String,
-  created_at: chrono::DateTime<chrono::Utc>,
-  read_at: Option<chrono::DateTime<chrono::Utc>>,
+  created_at: chrono::DateTime<chrono::Utc>,      // TODO: remove this field
+  read_at: Option<chrono::DateTime<chrono::Utc>>, // TODO: remove this field
 }
 
-impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for AccountToAccountRawMessage {
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for UserToUserRawMessage {
   fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
-    Ok(AccountToAccountRawMessage {
+    Ok(UserToUserRawMessage {
       id: row.try_get::<uuid::Uuid, _>("id")?.into(),
       sender_id: row.try_get("sender_id")?,
       receiver_id: row.try_get("receiver_id")?,
@@ -28,9 +28,9 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for AccountToAccountRawMessage
   }
 }
 
-impl AccountToAccountRawMessage {
+impl UserToUserRawMessage {
   pub fn new(
-    id: AccountToAccountMessageId, sender_id: AccountId, receiver_id: AccountId, topic: String, content: String,
+    id: UserToUserMessageId, sender_id: UserId, receiver_id: UserId, topic: String, content: String,
     created_at: chrono::DateTime<chrono::Utc>,
   ) -> Self {
     Self {
@@ -44,15 +44,15 @@ impl AccountToAccountRawMessage {
     }
   }
 
-  pub fn id(&self) -> AccountToAccountMessageId {
+  pub fn id(&self) -> UserToUserMessageId {
     self.id
   }
 
-  pub fn sender_id(&self) -> AccountId {
+  pub fn sender_id(&self) -> UserId {
     self.sender_id
   }
 
-  pub fn receiver_id(&self) -> AccountId {
+  pub fn receiver_id(&self) -> UserId {
     self.receiver_id
   }
 
@@ -76,6 +76,7 @@ impl AccountToAccountRawMessage {
     self.read_at.is_some()
   }
 
+  // TODO: remove this fn
   pub fn mark_as_read(&mut self, read_at: chrono::DateTime<chrono::Utc>) {
     self.read_at = Some(read_at);
   }

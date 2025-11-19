@@ -1,4 +1,4 @@
-use account_context::AccountId;
+use account_context::UserId;
 use tracing::{error, info, instrument};
 
 use crate::domain::repositories::{Pagination, RawMessageRepository};
@@ -24,7 +24,7 @@ impl RoomService {
   /// Create a new room
   #[instrument(skip(self), fields(name = name_str))]
   pub async fn create_room(
-    &self, name_str: &str, creator: AccountId, max_players: MaxPlayers,
+    &self, name_str: &str, creator: UserId, max_players: MaxPlayers,
   ) -> Result<Room, RoomError> {
     let name = RoomName::from(name_str);
     let result = self.room_manager.create_room(&name, creator, max_players).await;
@@ -107,79 +107,75 @@ impl RoomService {
   }
 
   /// Enter a room (always enters standing by, use change_seat to take a seat)
-  #[instrument(skip(self), fields(room_id = %room_id, account_id = %account_id))]
-  pub async fn enter_room(&self, room_id: RoomId, account_id: AccountId) -> Result<(), RoomError> {
-    let result = self.room_manager.enter_room_standing_by(account_id, room_id).await;
+  #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id))]
+  pub async fn enter_room(&self, room_id: RoomId, user_id: UserId) -> Result<(), RoomError> {
+    let result = self.room_manager.enter_room_standing_by(user_id, room_id).await;
     match &result {
       Ok(crate::domain::EnterRoomResult::Success) => {
-        info!("Account {} entered room {} and is standing by", account_id, room_id);
+        info!("User {} entered room {} and is standing by", user_id, room_id);
       },
       Ok(crate::domain::EnterRoomResult::AlreadyInRoom) => {
-        info!("Account {} is already in room {}", account_id, room_id);
+        info!("User {} is already in room {}", user_id, room_id);
       },
       Ok(crate::domain::EnterRoomResult::RoomExpired) => {
         return Err(RoomError::InvalidOperation("Room has expired".to_string()));
       },
-      Err(e) => error!("Failed to enter room {} for account {}: {:?}", room_id, account_id, e),
+      Err(e) => error!("Failed to enter room {} for user {}: {:?}", room_id, user_id, e),
     }
     result.map(|_| ())
   }
 
   /// Enter a room and take a random available seat
-  #[instrument(skip(self), fields(account_id = %account_id, room_id = %room_id))]
+  #[instrument(skip(self), fields(user_id = %user_id, room_id = %room_id))]
   pub async fn enter_room_and_take_random_seat(
-    &self, account_id: AccountId, room_id: RoomId,
+    &self, user_id: UserId, room_id: RoomId,
   ) -> Result<Option<SeatNumber>, RoomError> {
     let seat = self
       .room_manager
-      .enter_room_and_take_random_seat(account_id, room_id)
+      .enter_room_and_take_random_seat(user_id, room_id)
       .await?;
     match seat {
       Some(seat_num) => {
         info!(
-          "Account {} entered room {} and took random seat {}",
-          account_id,
+          "User {} entered room {} and took random seat {}",
+          user_id,
           room_id,
           seat_num.value()
         );
       },
       None => {
-        info!("Account {} entered room {} but no seats available", account_id, room_id);
+        info!("User {} entered room {} but no seats available", user_id, room_id);
       },
     }
     Ok(seat)
   }
 
   /// Take a random available seat in a room
-  #[instrument(skip(self), fields(room_id = %room_id, account_id = %account_id))]
-  pub async fn take_random_seat(
-    &self, room_id: RoomId, account_id: AccountId,
-  ) -> Result<Option<SeatNumber>, RoomError> {
-    self.room_manager.take_random_seat(account_id, room_id).await
+  #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id))]
+  pub async fn take_random_seat(&self, room_id: RoomId, user_id: UserId) -> Result<Option<SeatNumber>, RoomError> {
+    self.room_manager.take_random_seat(user_id, room_id).await
   }
 
   /// Leave a room
-  #[instrument(skip(self), fields(room_id = %room_id, account_id = %account_id))]
-  pub async fn leave_room(&self, room_id: RoomId, account_id: AccountId) -> Result<(), RoomError> {
-    let result = self.room_manager.leave_room(room_id, account_id).await;
+  #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id))]
+  pub async fn leave_room(&self, room_id: RoomId, user_id: UserId) -> Result<(), RoomError> {
+    let result = self.room_manager.leave_room(room_id, user_id).await;
     match &result {
-      Ok(_) => info!("Account {} left room {}", account_id, room_id),
-      Err(e) => error!("Failed to leave room {} for account {}: {:?}", room_id, account_id, e),
+      Ok(_) => info!("User {} left room {}", user_id, room_id),
+      Err(e) => error!("Failed to leave room {} for user {}: {:?}", room_id, user_id, e),
     }
     result
   }
 
   /// Change seat in a room
   /// Returns true if seat was successfully changed, false otherwise
-  #[instrument(skip(self), fields(room_id = %room_id, account_id = %account_id, seat = new_seat.value()))]
-  pub async fn change_seat(
-    &self, room_id: RoomId, account_id: AccountId, new_seat: SeatNumber,
-  ) -> Result<bool, RoomError> {
-    match self.room_manager.change_seat(room_id, account_id, new_seat).await {
+  #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id, seat = new_seat.value()))]
+  pub async fn change_seat(&self, room_id: RoomId, user_id: UserId, new_seat: SeatNumber) -> Result<bool, RoomError> {
+    match self.room_manager.change_seat(room_id, user_id, new_seat).await {
       Ok(crate::domain::ChangeSeatResult::Success) => {
         info!(
-          "Account {} changed to seat {} in room {}",
-          account_id,
+          "User {} changed to seat {} in room {}",
+          user_id,
           new_seat.value(),
           room_id
         );
@@ -187,8 +183,8 @@ impl RoomService {
       },
       Ok(crate::domain::ChangeSeatResult::AlreadyInSeat) => {
         info!(
-          "Account {} is already in seat {} in room {}",
-          account_id,
+          "User {} is already in seat {} in room {}",
+          user_id,
           new_seat.value(),
           room_id
         );
@@ -196,8 +192,8 @@ impl RoomService {
       },
       Ok(crate::domain::ChangeSeatResult::SeatOccupied) => {
         info!(
-          "Account {} tried to change to seat {} in room {} but seat is occupied",
-          account_id,
+          "User {} tried to change to seat {} in room {} but seat is occupied",
+          user_id,
           new_seat.value(),
           room_id
         );
@@ -209,8 +205,8 @@ impl RoomService {
       ))),
       Err(e) => {
         error!(
-          "Failed to change seat for account {} in room {}: {:?}",
-          account_id, room_id, e
+          "Failed to change seat for user {} in room {}: {:?}",
+          user_id, room_id, e
         );
         Err(e)
       },
@@ -218,63 +214,57 @@ impl RoomService {
   }
 
   /// Stand up from seat (become standing by)
-  #[instrument(skip(self), fields(room_id = %room_id, account_id = %account_id))]
-  pub async fn stand_up(&self, room_id: RoomId, account_id: AccountId) -> Result<(), RoomError> {
-    match self.room_manager.stand_up(room_id, account_id).await {
+  #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id))]
+  pub async fn stand_up(&self, room_id: RoomId, user_id: UserId) -> Result<(), RoomError> {
+    match self.room_manager.stand_up(room_id, user_id).await {
       Ok(crate::domain::StandUpResult::Success) => {
-        info!("Account {} stood up in room {}", account_id, room_id);
+        info!("User {} stood up in room {}", user_id, room_id);
         Ok(())
       },
       Ok(crate::domain::StandUpResult::AlreadyStanding) => {
-        info!("Account {} is already standing in room {}", account_id, room_id);
+        info!("User {} is already standing in room {}", user_id, room_id);
         Ok(())
       },
       Ok(crate::domain::StandUpResult::NotInRoom) => {
-        Err(RoomError::InvalidOperation("Account is not in this room".to_string()))
+        Err(RoomError::InvalidOperation("User is not in this room".to_string()))
       },
       Err(e) => {
-        error!(
-          "Failed to stand up for account {} in room {}: {:?}",
-          account_id, room_id, e
-        );
+        error!("Failed to stand up for user {} in room {}: {:?}", user_id, room_id, e);
         Err(e)
       },
     }
   }
 
   /// View behind a seat (must be standing by)
-  #[instrument(skip(self), fields(room_id = %room_id, account_id = %account_id, viewing_seat = viewing_seat.value()))]
+  #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id, viewing_seat = viewing_seat.value()))]
   pub async fn view_behind_seat(
-    &self, room_id: RoomId, account_id: AccountId, viewing_seat: SeatNumber,
+    &self, room_id: RoomId, user_id: UserId, viewing_seat: SeatNumber,
   ) -> Result<(), RoomError> {
-    let result = self
-      .room_manager
-      .view_behind_seat(room_id, account_id, viewing_seat)
-      .await;
+    let result = self.room_manager.view_behind_seat(room_id, user_id, viewing_seat).await;
     match &result {
       Ok(_) => info!(
-        "Account {} is viewing behind seat {} in room {}",
-        account_id,
+        "User {} is viewing behind seat {} in room {}",
+        user_id,
         viewing_seat.value(),
         room_id
       ),
       Err(e) => error!(
-        "Failed to view behind seat for account {} in room {}: {:?}",
-        account_id, room_id, e
+        "Failed to view behind seat for user {} in room {}: {:?}",
+        user_id, room_id, e
       ),
     }
     result
   }
 
   /// Stop viewing (but remain in room)
-  #[instrument(skip(self), fields(room_id = %room_id, account_id = %account_id))]
-  pub async fn stop_viewing(&self, room_id: RoomId, account_id: AccountId) -> Result<(), RoomError> {
-    let result = self.room_manager.stop_viewing(room_id, account_id).await;
+  #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id))]
+  pub async fn stop_viewing(&self, room_id: RoomId, user_id: UserId) -> Result<(), RoomError> {
+    let result = self.room_manager.stop_viewing(room_id, user_id).await;
     match &result {
-      Ok(_) => info!("Account {} stopped viewing in room {}", account_id, room_id),
+      Ok(_) => info!("User {} stopped viewing in room {}", user_id, room_id),
       Err(e) => error!(
-        "Failed to stop viewing for account {} in room {}: {:?}",
-        account_id, room_id, e
+        "Failed to stop viewing for user {} in room {}: {:?}",
+        user_id, room_id, e
       ),
     }
     result
@@ -290,14 +280,14 @@ impl RoomService {
     result
   }
 
-  /// Get participant info for an account in a room
-  #[instrument(skip(self), fields(room_id = %room_id, account_id = %account_id))]
+  /// Get participant info for a user in a room
+  #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id))]
   pub async fn get_participant(
-    &self, room_id: RoomId, account_id: AccountId,
+    &self, room_id: RoomId, user_id: UserId,
   ) -> Result<Option<RoomParticipant>, RoomError> {
-    let result = self.room_manager.get_participant(room_id, account_id).await;
+    let result = self.room_manager.get_participant(room_id, user_id).await;
     if let Err(e) = &result {
-      error!("Error getting participant {} in room {}: {:?}", account_id, room_id, e);
+      error!("Error getting participant {} in room {}: {:?}", user_id, room_id, e);
     }
     result
   }

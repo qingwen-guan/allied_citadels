@@ -1,4 +1,3 @@
-mod account_to_room_message_id;
 mod max_players;
 mod message_content;
 mod message_topic;
@@ -6,10 +5,10 @@ mod room_id;
 mod room_name;
 mod room_number;
 mod room_state;
-mod room_to_account_message_id;
+mod room_to_user_message_id;
 mod seat_number;
+mod user_to_room_message_id;
 
-pub use account_to_room_message_id::AccountToRoomMessageId;
 pub use max_players::MaxPlayers;
 pub use message_content::MessageContent;
 pub use message_topic::MessageTopic;
@@ -17,5 +16,6 @@ pub use room_id::RoomId;
 pub use room_name::RoomName;
 pub use room_number::RoomNumber;
 pub use room_state::RoomState;
-pub use room_to_account_message_id::RoomToAccountMessageId;
+pub use room_to_user_message_id::RoomToUserMessageId;
 pub use seat_number::SeatNumber;
+pub use user_to_room_message_id::UserToRoomMessageId;

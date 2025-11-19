@@ -1,4 +1,4 @@
-use account_context::AccountId;
+use account_context::UserId;
 use sqlx::Row;
 
 use crate::domain::valueobjects::{RoomId, SeatNumber};
@@ -6,7 +6,7 @@ use crate::domain::valueobjects::{RoomId, SeatNumber};
 #[derive(Debug, Clone)]
 pub struct RoomParticipant {
   room_id: RoomId,
-  account_id: AccountId,
+  user_id: UserId,
   seat_number: Option<SeatNumber>, // None = standing by, Some(seat) = sitting in that seat
   viewing_seat_number: Option<SeatNumber>, // None = not viewing, Some(seat) = viewing behind that seat
   joined_at: chrono::DateTime<chrono::Utc>,
@@ -16,7 +16,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for RoomParticipant {
   fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
     Ok(RoomParticipant {
       room_id: row.try_get("room_id")?,
-      account_id: row.try_get("account_id")?,
+      user_id: row.try_get("user_id")?,
       seat_number: row.try_get("seat_number")?,
       viewing_seat_number: row.try_get("viewing_seat_number")?,
       joined_at: row.try_get("joined_at")?,
@@ -26,12 +26,12 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for RoomParticipant {
 
 impl RoomParticipant {
   pub fn new(
-    room_id: RoomId, account_id: AccountId, seat_number: Option<SeatNumber>, viewing_seat_number: Option<SeatNumber>,
+    room_id: RoomId, user_id: UserId, seat_number: Option<SeatNumber>, viewing_seat_number: Option<SeatNumber>,
     joined_at: chrono::DateTime<chrono::Utc>,
   ) -> Self {
     Self {
       room_id,
-      account_id,
+      user_id,
       seat_number,
       viewing_seat_number,
       joined_at,
@@ -42,8 +42,8 @@ impl RoomParticipant {
     self.room_id
   }
 
-  pub fn account_id(&self) -> AccountId {
-    self.account_id
+  pub fn user_id(&self) -> UserId {
+    self.user_id
   }
 
   /// Get the seat number if the participant is sitting, None if standing by

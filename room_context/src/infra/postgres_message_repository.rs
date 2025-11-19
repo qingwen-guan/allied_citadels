@@ -1,11 +1,9 @@
-use account_context::AccountId;
+use account_context::UserId;
 use sqlx::PgPool;
 
 use crate::domain::repositories::RawMessageRepository;
-use crate::domain::valueobjects::{
-  AccountToRoomMessageId, MessageContent, MessageTopic, RoomId, RoomToAccountMessageId,
-};
-use crate::domain::{AccountToRoomRawMessage, RoomToAccountRawMessage};
+use crate::domain::valueobjects::{MessageContent, MessageTopic, RoomId, RoomToUserMessageId, UserToRoomMessageId};
+use crate::domain::{RoomToUserRawMessage, UserToRoomRawMessage};
 use crate::error::RoomError;
 
 /// PostgreSQL implementation of RawMessageRepository
@@ -21,67 +19,66 @@ impl PostgresMessageRepository {
 
 #[async_trait::async_trait]
 impl RawMessageRepository for PostgresMessageRepository {
-  async fn insert_room_to_account_raw_message(
-    &self, room_id: RoomId, account_id: AccountId, topic: MessageTopic, content: MessageContent,
-  ) -> Result<RoomToAccountRawMessage, RoomError> {
-    let id = RoomToAccountMessageId::from(uuid::Uuid::new_v4());
-    let created_at = chrono::Utc::now();
+  async fn insert_room_to_user_raw_message(
+    // TODO: take RoomToUserRawMessage as paramater
+    &self,
+    room_id: RoomId,
+    user_id: UserId,
+    topic: MessageTopic,
+    content: MessageContent,
+  ) -> Result<RoomToUserRawMessage, RoomError> {
+    let id = RoomToUserMessageId::from(uuid::Uuid::new_v4());
 
     sqlx::query(
-      "INSERT INTO room_to_account_message (id, room_id, account_id, topic, content, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6)",
+      "INSERT INTO room_to_user_message (id, room_id, user_id, topic, content, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())",
     )
     .bind(id)
     .bind(room_id)
-    .bind(account_id)
+    .bind(user_id)
     .bind(&topic)
     .bind(&content)
-    .bind(created_at)
     .execute(&self.pool)
     .await?;
 
-    Ok(RoomToAccountRawMessage::new(
-      id, room_id, account_id, topic, content, created_at,
-    ))
+    Ok(RoomToUserRawMessage::new(id, room_id, user_id, topic, content))
   }
 
-  async fn batch_insert_room_to_account_raw_messages(
-    &self, messages: Vec<(RoomId, AccountId, MessageTopic, MessageContent)>,
-  ) -> Result<Vec<RoomToAccountRawMessage>, RoomError> {
+  async fn batch_insert_room_to_user_raw_messages(
+    &self,
+    messages: Vec<(RoomId, UserId, MessageTopic, MessageContent)>, // TODO: take [RoomToUserRawMessage] as paramater
+  ) -> Result<Vec<RoomToUserRawMessage>, RoomError> {
     if messages.is_empty() {
       return Ok(Vec::new());
     }
 
-    let created_at = chrono::Utc::now();
     let mut results = Vec::with_capacity(messages.len());
-    let mut query_builder = sqlx::QueryBuilder::new(
-      "INSERT INTO room_to_account_message (id, room_id, account_id, topic, content, created_at) ",
-    );
+    let mut query_builder =
+      sqlx::QueryBuilder::new("INSERT INTO room_to_user_message (id, room_id, user_id, topic, content, created_at) ");
 
     // Collect all data first to avoid borrowing issues
-    let data: Vec<(RoomToAccountMessageId, RoomId, AccountId, MessageTopic, MessageContent)> = messages
+    let data: Vec<(RoomToUserMessageId, RoomId, UserId, MessageTopic, MessageContent)> = messages
       .into_iter()
-      .map(|(room_id, account_id, topic, content)| {
-        let id = RoomToAccountMessageId::from(uuid::Uuid::new_v4());
-        results.push(RoomToAccountRawMessage::new(
+      .map(|(room_id, user_id, topic, content)| {
+        let id = RoomToUserMessageId::from(uuid::Uuid::new_v4());
+        results.push(RoomToUserRawMessage::new(
           id,
           room_id,
-          account_id,
+          user_id,
           topic.clone(),
           content.clone(),
-          created_at,
         ));
-        (id, room_id, account_id, topic, content)
+        (id, room_id, user_id, topic, content)
       })
       .collect();
 
-    query_builder.push_values(data, |mut b, (id, room_id, account_id, topic, content)| {
+    query_builder.push_values(data, |mut b, (id, room_id, user_id, topic, content)| {
       b.push_bind(id)
         .push_bind(room_id)
-        .push_bind(account_id)
+        .push_bind(user_id)
         .push_bind(topic)
         .push_bind(content)
-        .push_bind(created_at);
+        .push("NOW()");
     });
 
     let query = query_builder.build();
@@ -90,32 +87,32 @@ impl RawMessageRepository for PostgresMessageRepository {
     Ok(results)
   }
 
-  async fn query_next_unread_room_to_account_raw_message(
-    &self, room_id: RoomId, account_id: AccountId, topic: Option<&MessageTopic>,
-  ) -> Result<Option<RoomToAccountRawMessage>, RoomError> {
+  async fn query_next_unread_room_to_user_raw_message(
+    &self, room_id: RoomId, user_id: UserId, topic: Option<&MessageTopic>,
+  ) -> Result<Option<RoomToUserRawMessage>, RoomError> {
     let message = if let Some(topic) = topic {
-      sqlx::query_as::<_, RoomToAccountRawMessage>(
-        "SELECT id, room_id, account_id, topic, content, created_at, read_at
-         FROM room_to_account_message
-         WHERE room_id = $1 AND account_id = $2 AND topic = $3 AND read_at IS NULL
+      sqlx::query_as::<_, RoomToUserRawMessage>(
+        "SELECT id, room_id, user_id, topic, content
+         FROM room_to_user_message
+         WHERE room_id = $1 AND user_id = $2 AND topic = $3 AND read_at IS NULL
          ORDER BY created_at ASC
          LIMIT 1",
       )
       .bind(room_id)
-      .bind(account_id)
+      .bind(user_id)
       .bind(topic)
       .fetch_optional(&self.pool)
       .await?
     } else {
-      sqlx::query_as::<_, RoomToAccountRawMessage>(
-        "SELECT id, room_id, account_id, topic, content, created_at, read_at
-         FROM room_to_account_message
-         WHERE room_id = $1 AND account_id = $2 AND read_at IS NULL
+      sqlx::query_as::<_, RoomToUserRawMessage>(
+        "SELECT id, room_id, user_id, topic, content
+         FROM room_to_user_message
+         WHERE room_id = $1 AND user_id = $2 AND read_at IS NULL
          ORDER BY created_at ASC
          LIMIT 1",
       )
       .bind(room_id)
-      .bind(account_id)
+      .bind(user_id)
       .fetch_optional(&self.pool)
       .await?
     };
@@ -123,33 +120,33 @@ impl RawMessageRepository for PostgresMessageRepository {
     Ok(message)
   }
 
-  async fn batch_query_next_unread_room_to_account_raw_messages(
-    &self, room_id: RoomId, account_id: AccountId, topic: Option<&MessageTopic>, limit: usize,
-  ) -> Result<Vec<RoomToAccountRawMessage>, RoomError> {
+  async fn batch_query_next_unread_room_to_user_raw_messages(
+    &self, room_id: RoomId, user_id: UserId, topic: Option<&MessageTopic>, limit: usize,
+  ) -> Result<Vec<RoomToUserRawMessage>, RoomError> {
     let messages = if let Some(topic) = topic {
-      sqlx::query_as::<_, RoomToAccountRawMessage>(
-        "SELECT id, room_id, account_id, topic, content, created_at, read_at
-         FROM room_to_account_message
-         WHERE room_id = $1 AND account_id = $2 AND topic = $3 AND read_at IS NULL
+      sqlx::query_as::<_, RoomToUserRawMessage>(
+        "SELECT id, room_id, user_id, topic, content
+         FROM room_to_user_message
+         WHERE room_id = $1 AND user_id = $2 AND topic = $3 AND read_at IS NULL
          ORDER BY created_at ASC
          LIMIT $4",
       )
       .bind(room_id)
-      .bind(account_id)
+      .bind(user_id)
       .bind(topic)
       .bind(limit as i64)
       .fetch_all(&self.pool)
       .await?
     } else {
-      sqlx::query_as::<_, RoomToAccountRawMessage>(
-        "SELECT id, room_id, account_id, topic, content, created_at, read_at
-         FROM room_to_account_message
-         WHERE room_id = $1 AND account_id = $2 AND read_at IS NULL
+      sqlx::query_as::<_, RoomToUserRawMessage>(
+        "SELECT id, room_id, user_id, topic, content
+         FROM room_to_user_message
+         WHERE room_id = $1 AND user_id = $2 AND read_at IS NULL
          ORDER BY created_at ASC
          LIMIT $3",
       )
       .bind(room_id)
-      .bind(account_id)
+      .bind(user_id)
       .bind(limit as i64)
       .fetch_all(&self.pool)
       .await?
@@ -158,18 +155,18 @@ impl RawMessageRepository for PostgresMessageRepository {
     Ok(messages)
   }
 
-  async fn mark_room_to_account_raw_message_as_read(
-    &self, message_id: RoomToAccountMessageId, account_id: AccountId,
+  async fn mark_room_to_user_raw_message_as_read(
+    &self, message_id: RoomToUserMessageId, user_id: UserId,
   ) -> Result<bool, RoomError> {
     let read_at = chrono::Utc::now();
     let rows_affected = sqlx::query(
-      "UPDATE room_to_account_message
+      "UPDATE room_to_user_message
        SET read_at = $1
-       WHERE id = $2 AND account_id = $3 AND read_at IS NULL",
+       WHERE id = $2 AND user_id = $3 AND read_at IS NULL",
     )
     .bind(read_at)
     .bind(message_id)
-    .bind(account_id)
+    .bind(user_id)
     .execute(&self.pool)
     .await?
     .rows_affected();
@@ -177,67 +174,64 @@ impl RawMessageRepository for PostgresMessageRepository {
     Ok(rows_affected > 0)
   }
 
-  async fn insert_account_to_room_raw_message(
-    &self, room_id: RoomId, account_id: AccountId, topic: MessageTopic, content: MessageContent,
-  ) -> Result<AccountToRoomRawMessage, RoomError> {
-    let id = AccountToRoomMessageId::from(uuid::Uuid::new_v4());
-    let created_at = chrono::Utc::now();
+  async fn insert_user_to_room_raw_message(
+    &self,
+    room_id: RoomId,
+    user_id: UserId,
+    topic: MessageTopic,
+    content: MessageContent, // TODO: take UserToRoomRawMessage as paramater
+  ) -> Result<UserToRoomRawMessage, RoomError> {
+    let id = UserToRoomMessageId::from(uuid::Uuid::new_v4());
 
     sqlx::query(
-      "INSERT INTO account_to_room_message (id, room_id, account_id, topic, content, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6)",
+      "INSERT INTO user_to_room_message (id, room_id, user_id, topic, content, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())",
     )
     .bind(id)
     .bind(room_id)
-    .bind(account_id)
+    .bind(user_id)
     .bind(&topic)
     .bind(&content)
-    .bind(created_at)
     .execute(&self.pool)
     .await?;
 
-    Ok(AccountToRoomRawMessage::new(
-      id, room_id, account_id, topic, content, created_at,
-    ))
+    Ok(UserToRoomRawMessage::new(id, room_id, user_id, topic, content))
   }
 
-  async fn batch_insert_account_to_room_raw_messages(
-    &self, messages: Vec<(RoomId, AccountId, MessageTopic, MessageContent)>,
-  ) -> Result<Vec<AccountToRoomRawMessage>, RoomError> {
+  async fn batch_insert_user_to_room_raw_messages(
+    &self, messages: Vec<(RoomId, UserId, MessageTopic, MessageContent)>,
+  ) -> Result<Vec<UserToRoomRawMessage>, RoomError> {
     if messages.is_empty() {
       return Ok(Vec::new());
     }
 
-    let created_at = chrono::Utc::now();
     let mut results = Vec::with_capacity(messages.len());
-    let mut query_builder = sqlx::QueryBuilder::new(
-      "INSERT INTO account_to_room_message (id, room_id, account_id, topic, content, created_at) ",
-    );
+    let mut query_builder =
+      sqlx::QueryBuilder::new("INSERT INTO user_to_room_message (id, room_id, user_id, topic, content, created_at) ");
 
     // Collect all data first to avoid borrowing issues
-    let data: Vec<(AccountToRoomMessageId, RoomId, AccountId, MessageTopic, MessageContent)> = messages
+    let data: Vec<(UserToRoomMessageId, RoomId, UserId, MessageTopic, MessageContent)> = messages
       .into_iter()
-      .map(|(room_id, account_id, topic, content)| {
-        let id = AccountToRoomMessageId::from(uuid::Uuid::new_v4());
-        results.push(AccountToRoomRawMessage::new(
+      .map(|(room_id, user_id, topic, content)| {
+        let id = UserToRoomMessageId::from(uuid::Uuid::new_v4());
+        results.push(UserToRoomRawMessage::new(
           id,
           room_id,
-          account_id,
+          user_id,
           topic.clone(),
           content.clone(),
-          created_at,
         ));
-        (id, room_id, account_id, topic, content)
+        (id, room_id, user_id, topic, content)
       })
       .collect();
 
-    query_builder.push_values(data, |mut b, (id, room_id, account_id, topic, content)| {
+    query_builder.push_values(data, |mut b, (id, room_id, user_id, topic, content)| {
       b.push_bind(id)
         .push_bind(room_id)
-        .push_bind(account_id)
+        .push_bind(user_id)
         .push_bind(topic)
         .push_bind(content)
-        .push_bind(created_at);
+        .push("NOW()");
     });
 
     let query = query_builder.build();
@@ -246,13 +240,13 @@ impl RawMessageRepository for PostgresMessageRepository {
     Ok(results)
   }
 
-  async fn query_next_unread_account_to_room_raw_message(
+  async fn query_next_unread_user_to_room_raw_message(
     &self, room_id: RoomId, topic: Option<&MessageTopic>,
-  ) -> Result<Option<AccountToRoomRawMessage>, RoomError> {
+  ) -> Result<Option<UserToRoomRawMessage>, RoomError> {
     let message = if let Some(topic) = topic {
-      sqlx::query_as::<_, AccountToRoomRawMessage>(
-        "SELECT id, room_id, account_id, topic, content, created_at, read_at
-         FROM account_to_room_message
+      sqlx::query_as::<_, UserToRoomRawMessage>(
+        "SELECT id, room_id, user_id, topic, content
+         FROM user_to_room_message
          WHERE room_id = $1 AND topic = $2 AND read_at IS NULL
          ORDER BY created_at ASC
          LIMIT 1",
@@ -262,9 +256,9 @@ impl RawMessageRepository for PostgresMessageRepository {
       .fetch_optional(&self.pool)
       .await?
     } else {
-      sqlx::query_as::<_, AccountToRoomRawMessage>(
-        "SELECT id, room_id, account_id, topic, content, created_at, read_at
-         FROM account_to_room_message
+      sqlx::query_as::<_, UserToRoomRawMessage>(
+        "SELECT id, room_id, user_id, topic, content
+         FROM user_to_room_message
          WHERE room_id = $1 AND read_at IS NULL
          ORDER BY created_at ASC
          LIMIT 1",
@@ -277,13 +271,13 @@ impl RawMessageRepository for PostgresMessageRepository {
     Ok(message)
   }
 
-  async fn batch_query_next_unread_account_to_room_raw_messages(
+  async fn batch_query_next_unread_user_to_room_raw_messages(
     &self, room_id: RoomId, topic: Option<&MessageTopic>, limit: usize,
-  ) -> Result<Vec<AccountToRoomRawMessage>, RoomError> {
+  ) -> Result<Vec<UserToRoomRawMessage>, RoomError> {
     let messages = if let Some(topic) = topic {
-      sqlx::query_as::<_, AccountToRoomRawMessage>(
-        "SELECT id, room_id, account_id, topic, content, created_at, read_at
-         FROM account_to_room_message
+      sqlx::query_as::<_, UserToRoomRawMessage>(
+        "SELECT id, room_id, user_id, topic, content
+         FROM user_to_room_message
          WHERE room_id = $1 AND topic = $2 AND read_at IS NULL
          ORDER BY created_at ASC
          LIMIT $3",
@@ -294,9 +288,9 @@ impl RawMessageRepository for PostgresMessageRepository {
       .fetch_all(&self.pool)
       .await?
     } else {
-      sqlx::query_as::<_, AccountToRoomRawMessage>(
-        "SELECT id, room_id, account_id, topic, content, created_at, read_at
-         FROM account_to_room_message
+      sqlx::query_as::<_, UserToRoomRawMessage>(
+        "SELECT id, room_id, user_id, topic, content
+         FROM user_to_room_message
          WHERE room_id = $1 AND read_at IS NULL
          ORDER BY created_at ASC
          LIMIT $2",
@@ -310,12 +304,12 @@ impl RawMessageRepository for PostgresMessageRepository {
     Ok(messages)
   }
 
-  async fn mark_account_to_room_raw_message_as_read(
-    &self, message_id: AccountToRoomMessageId, room_id: RoomId,
+  async fn mark_user_to_room_raw_message_as_read(
+    &self, message_id: UserToRoomMessageId, room_id: RoomId,
   ) -> Result<bool, RoomError> {
     let read_at = chrono::Utc::now();
     let rows_affected = sqlx::query(
-      "UPDATE account_to_room_message
+      "UPDATE user_to_room_message
        SET read_at = $1
        WHERE id = $2 AND room_id = $3 AND read_at IS NULL",
     )

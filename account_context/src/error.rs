@@ -1,14 +1,14 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum AccountError {
+pub enum UserError {
   #[error("Configuration error: {0}")]
   Config(#[from] ConfigError),
 
   #[error("Database error: {0}")]
   Database(#[from] sqlx::Error),
 
-  #[error("Account not found")]
+  #[error("User not found")]
   NotFound,
 
   #[error("Nickname already exists")]
@@ -17,7 +17,7 @@ pub enum AccountError {
   #[error("Invalid operation: {0}")]
   InvalidOperation(String),
 
-  #[error("Data integrity error: multiple accounts found with the same nickname")]
+  #[error("Data integrity error: multiple users found with the same nickname")]
   DuplicateNickname,
 
   #[error("Invalid credentials")]

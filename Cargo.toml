@@ -1,3 +1,3 @@
 [workspace]
 resolver = "3"
-members = ["account_context", "common_context","postgres_proxy","redis_cli", "room_context", "server", "splitimage", "user_service"]
+members = ["account_context", "common_context","postgres_proxy","redis_cli", "room_context", "server", "splitimage"]

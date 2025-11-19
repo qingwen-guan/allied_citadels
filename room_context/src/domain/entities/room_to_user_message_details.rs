@@ -1,12 +1,12 @@
-use account_context::AccountId;
+use account_context::UserId;
 
 use crate::domain::valueobjects::{MaxPlayers, MessageTopic, RoomId, RoomState};
 
-/// RoomToAccountMessageDetails - enum representing different types of room to account messages
+/// RoomToUserMessageDetails - enum representing different types of room to user messages
 #[derive(Debug, Clone)]
-pub enum RoomToAccountMessageDetails {
+pub enum RoomToUserMessageDetails {
   /// Room state update
-  #[allow(dead_code)] // TODO: remove later
+  #[allow(dead_code)]
   RoomStateUpdate {
     room_id: RoomId,
     from: RoomState,
@@ -24,18 +24,18 @@ pub enum RoomToAccountMessageDetails {
   /// Force stand up notification
   ForceStandUp {
     room_id: RoomId,
-    account_id: AccountId,
+    user_id: UserId,
     reason: Option<String>,
   },
 }
 
-impl RoomToAccountMessageDetails {
+impl RoomToUserMessageDetails {
   pub fn topic(&self) -> MessageTopic {
     let topic_str = match self {
-      RoomToAccountMessageDetails::RoomStateUpdate { .. } => "room_state_update",
-      RoomToAccountMessageDetails::RoomDeleted { .. } => "delete_room",
-      RoomToAccountMessageDetails::MaxPlayersUpdated { .. } => "update_max_players",
-      RoomToAccountMessageDetails::ForceStandUp { .. } => "force_stand_up",
+      RoomToUserMessageDetails::RoomStateUpdate { .. } => "room_state_update",
+      RoomToUserMessageDetails::RoomDeleted { .. } => "delete_room",
+      RoomToUserMessageDetails::MaxPlayersUpdated { .. } => "update_max_players",
+      RoomToUserMessageDetails::ForceStandUp { .. } => "force_stand_up",
     };
     MessageTopic::from(topic_str)
   }
