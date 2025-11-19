@@ -1,5 +1,5 @@
-use account_context::UserId;
 use async_trait::async_trait;
+use user_context::UserId;
 
 use crate::domain::entities::{Room, RoomParticipant};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};

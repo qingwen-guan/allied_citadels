@@ -8,7 +8,7 @@ pub struct User {
   uuid: Uuid,
   nickname: NickName,
   salted_password: SaltedPassword,
-  // TODO: add field to indicate password change deadline
+  password_change_deadline: Option<chrono::DateTime<chrono::Utc>>, // TODO: make it required
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for User {
@@ -17,6 +17,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for User {
       uuid: row.try_get("uuid")?,
       nickname: NickName::from(row.try_get::<String, _>("nickname")?),
       salted_password: SaltedPassword::from_string(row.try_get::<String, _>("salted_password")?),
+      password_change_deadline: row.try_get("password_change_deadline").ok().flatten(),
     })
   }
 }
@@ -27,6 +28,7 @@ impl User {
       uuid,
       nickname: nickname.into(),
       salted_password,
+      password_change_deadline: None,
     }
   }
 
@@ -40,5 +42,9 @@ impl User {
 
   pub fn salted_password(&self) -> &SaltedPassword {
     &self.salted_password
+  }
+
+  pub fn password_change_deadline(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+    self.password_change_deadline
   }
 }

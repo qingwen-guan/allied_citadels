@@ -1,7 +1,20 @@
-use account_context::UserId;
 use sqlx::Row;
+use user_context::UserId;
 
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
+
+/// Parameters for creating a Room with stand_by_limit
+#[derive(Debug)]
+pub struct RoomWithStandByLimitParams {
+  pub id: RoomId,
+  pub number: RoomNumber,
+  pub name: RoomName,
+  pub creator: UserId,
+  pub max_players: MaxPlayers,
+  pub stand_by_limit: Option<usize>,
+  pub created_at: chrono::DateTime<chrono::Utc>,
+  pub expires_at: chrono::DateTime<chrono::Utc>,
+}
 
 #[derive(Debug)]
 pub struct Room {
@@ -51,21 +64,16 @@ impl Room {
     }
   }
 
-  #[allow(clippy::too_many_arguments)] // TODO: resolve it
-  pub fn with_stand_by_limit(
-    id: RoomId, number: RoomNumber, name: impl Into<RoomName>, creator: UserId, max_players: MaxPlayers,
-    stand_by_limit: Option<usize>, created_at: chrono::DateTime<chrono::Utc>,
-    expires_at: chrono::DateTime<chrono::Utc>,
-  ) -> Self {
+  pub fn with_stand_by_limit(params: RoomWithStandByLimitParams) -> Self {
     Self {
-      id,
-      number,
-      name: name.into(),
-      creator,
-      max_players,
-      stand_by_limit,
-      created_at,
-      expires_at,
+      id: params.id,
+      number: params.number,
+      name: params.name,
+      creator: params.creator,
+      max_players: params.max_players,
+      stand_by_limit: params.stand_by_limit,
+      created_at: params.created_at,
+      expires_at: params.expires_at,
     }
   }
 

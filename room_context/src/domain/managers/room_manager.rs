@@ -1,4 +1,4 @@
-use account_context::UserId;
+use user_context::UserId;
 
 use crate::domain::entities::{Room, RoomParticipant, RoomToUserMessage, RoomToUserMessageDetails};
 use crate::domain::managers::MessageManager;
@@ -294,7 +294,7 @@ impl RoomManager {
       .room_repository
       .get_participant(room_id, user_id)
       .await?
-      .ok_or_else(|| RoomError::InvalidOperation("User is not in this room".to_string()))?; // TODO: User
+      .ok_or_else(|| RoomError::InvalidOperation("User is not in this room".to_string()))?;
 
     // If already in the same seat, return AlreadyInSeat
     if participant.seat_number() == Some(new_seat) {

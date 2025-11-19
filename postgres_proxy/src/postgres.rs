@@ -73,7 +73,7 @@ pub fn create_database(config: &Config) -> Result<(), PostgresError> {
   println!("{}", "=".repeat(40));
   println!("Database name: {}", TARGET_DATABASE);
   println!();
-  println!("You can now run 'account_context create-account-table' to create the account table.");
+  println!("You can now run 'user_context create-account-table' to create the account table.");
   println!();
 
   Ok(())

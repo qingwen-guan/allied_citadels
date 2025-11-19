@@ -1,8 +1,8 @@
-use account_context::UserId;
 use async_trait::async_trait;
+use user_context::UserId;
 
 use crate::domain::entities::{RoomToUserRawMessage, UserToRoomRawMessage};
-use crate::domain::valueobjects::{MessageContent, MessageTopic, RoomId, RoomToUserMessageId, UserToRoomMessageId};
+use crate::domain::valueobjects::{MessageTopic, RoomId, RoomToUserMessageId, UserToRoomMessageId};
 use crate::error::RoomError;
 
 /// RawMessageRepository trait - interface for raw message data access
@@ -10,10 +10,11 @@ use crate::error::RoomError;
 pub trait RawMessageRepository: Send + Sync {
   // Room to User messages
   async fn insert_room_to_user_raw_message(
-    &self, room_id: RoomId, user_id: UserId, topic: MessageTopic, content: MessageContent,
+    &self, message: RoomToUserRawMessage,
   ) -> Result<RoomToUserRawMessage, RoomError>;
   async fn batch_insert_room_to_user_raw_messages(
-    &self, messages: Vec<(RoomId, UserId, MessageTopic, MessageContent)>,
+    &self,
+    messages: Vec<RoomToUserRawMessage>, // TODO: take [RoomToUserRawMessage] as paramater
   ) -> Result<Vec<RoomToUserRawMessage>, RoomError>;
   async fn query_next_unread_room_to_user_raw_message(
     &self, room_id: RoomId, user_id: UserId, topic: Option<&MessageTopic>,
@@ -27,10 +28,10 @@ pub trait RawMessageRepository: Send + Sync {
 
   // User to Room messages
   async fn insert_user_to_room_raw_message(
-    &self, room_id: RoomId, user_id: UserId, topic: MessageTopic, content: MessageContent,
+    &self, message: UserToRoomRawMessage,
   ) -> Result<UserToRoomRawMessage, RoomError>;
   async fn batch_insert_user_to_room_raw_messages(
-    &self, messages: Vec<(RoomId, UserId, MessageTopic, MessageContent)>,
+    &self, messages: Vec<UserToRoomRawMessage>,
   ) -> Result<Vec<UserToRoomRawMessage>, RoomError>;
   async fn query_next_unread_user_to_room_raw_message(
     &self, room_id: RoomId, topic: Option<&MessageTopic>,

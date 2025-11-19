@@ -1,4 +1,4 @@
-use account_context::UserId;
+use user_context::UserId;
 
 use crate::domain::valueobjects::{MaxPlayers, MessageTopic, RoomId, RoomState};
 

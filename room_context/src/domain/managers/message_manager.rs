@@ -1,4 +1,4 @@
-use crate::domain::entities::RoomToUserMessage;
+use crate::domain::entities::{RoomToUserMessage, RoomToUserRawMessage};
 use crate::domain::repositories::RawMessageRepository;
 use crate::error::RoomError;
 
@@ -14,14 +14,14 @@ impl MessageManager {
 
   /// Batch insert multiple room to user messages
   pub async fn batch_insert_room_to_user_message(&self, messages: Vec<RoomToUserMessage>) -> Result<(), RoomError> {
-    let raw_messages: Vec<_> = messages
+    let raw_messages: Vec<RoomToUserRawMessage> = messages
       .into_iter()
       .map(|message| {
         let room_id = message.room_id();
         let user_id = message.user_id();
         let topic = message.topic();
         let content = message.content();
-        (room_id, user_id, topic, content)
+        RoomToUserRawMessage::without_id(room_id, user_id, topic, content) // TODO: RoomToUserRaowMessage::new()
       })
       .collect();
 

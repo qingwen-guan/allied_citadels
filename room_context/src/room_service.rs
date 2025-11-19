@@ -1,5 +1,5 @@
-use account_context::UserId;
 use tracing::{error, info, instrument};
+use user_context::UserId;
 
 use crate::domain::repositories::{Pagination, RawMessageRepository};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};

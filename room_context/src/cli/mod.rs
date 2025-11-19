@@ -1,8 +1,8 @@
 mod list;
 
-use account_context::UserId;
 use clap::{Parser, Subcommand};
 use room_context::{MaxPlayers, RoomId, RoomService};
+use user_context::UserId;
 
 #[derive(Parser)]
 pub struct Cli {
@@ -45,7 +45,8 @@ pub enum RoomCommand {
   UpdateName { uuid: String, new_name: String },
   /// Update room max players
   UpdateMaxPlayers { uuid: String, max_players: usize },
-  // TODO: add chat command
+  /// Chat command (placeholder for future implementation)
+  Chat { room_uuid: String, message: String },
 }
 
 #[derive(Subcommand)]
@@ -58,7 +59,7 @@ pub enum MigrateCommand {
   CreateRoomToUserMessageTable,
   /// Create the user_to_room_message table in the database
   CreateUserToRoomMessageTable,
-  /// Create the user table in the database (delegated to account_context)
+  /// Create the user table in the database (delegated to user_context)
   CreateUserTable,
   /// Drop all tables from the database
   DropAllTables,
@@ -160,6 +161,15 @@ async fn handle_room_command(
       let room_id = RoomId::from(uuid);
       room_service.update_room_max_players(room_id, max_players).await?;
       println!("Updated max players for UUID: {}", uuid);
+      Ok(())
+    },
+    RoomCommand::Chat { room_uuid, message } => {
+      // TODO: Implement chat functionality
+      // TODO: call room_servie.chat()
+      println!(
+        "Chat command not yet implemented. Room: {}, Message: {}",
+        room_uuid, message
+      );
       Ok(())
     },
   }

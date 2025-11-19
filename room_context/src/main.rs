@@ -88,8 +88,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   if let cli::Command::Migrates { command } = &cli.command {
     match command {
       cli::MigrateCommand::CreateUserTable => {
-        let user_config = account_context::Config::load()?;
-        account_context::create_user_table(&user_config.dsn).await?;
+        let user_config = user_context::Config::load()?;
+        user_context::create_user_table(&user_config.dsn).await?;
       },
       cli::MigrateCommand::CreateRoomTable => {
         let config = Config::load()?;

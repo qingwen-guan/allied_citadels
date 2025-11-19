@@ -2,9 +2,6 @@ mod cli;
 
 use std::sync::Arc;
 
-use account_context::{
-  Config, PostgresSessionRepository, PostgresUserRepository, Salt, UserError, UserFactory, UserService,
-};
 use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -15,6 +12,9 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
+use user_context::{
+  Config, PostgresSessionRepository, PostgresUserRepository, Salt, UserError, UserFactory, UserService,
+};
 use uuid::Uuid;
 
 #[derive(Serialize)]
@@ -74,33 +74,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
     .init();
 
-  let cli = cli::Cli::parse();
+  let cli = cli::Cli::parse(); // TODO: parse only once
+  let command = cli.command;
 
   // Handle commands that don't need UserService
-  // TODO: move the logic to cli/migrates.rs
-  if let cli::Command::Migrates { command } = &cli.command {
-    let config = Config::load()?;
-    match command {
-      // TODO: add create_all_tables command
-      cli::MigrateCommand::CreateUserTable => {
-        account_context::create_user_table(&config.dsn).await?;
-      },
-      cli::MigrateCommand::CreateUserSessionTable => {
-        account_context::create_user_session_table(&config.dsn).await?;
-      },
-      cli::MigrateCommand::DropTableUserSession => {
-        account_context::drop_table_user_session(&config.dsn).await?;
-      },
-      cli::MigrateCommand::DropAllTables => {
-        common_context::drop_all_tables(&config.dsn).await?;
-      },
-    }
-    return Ok(());
+  if let cli::Command::Migrates { command } = command {
+    return cli::handle_migrate_command(command).await;
   }
 
   let config = Config::load()?;
   let user_service = create_user_service(&config).await?;
 
+  // Re-parse CLI for commands that need UserService (since we consumed it above)
+  let cli = cli::Cli::parse();
   match cli.command {
     cli::Command::Serve => {
       let app = create_router(Arc::new(user_service));

@@ -1,11 +1,12 @@
 mod list;
 mod list_sessions;
 mod login;
+mod migrates;
 mod reset_password;
 mod session;
 
-use account_context::UserService;
 use clap::{Parser, Subcommand};
+use user_context::UserService;
 
 #[derive(Parser)]
 pub struct Cli {
@@ -71,6 +72,8 @@ pub enum MigrateCommand {
   DropTableUserSession,
   /// Drop all tables from the database
   DropAllTables,
+  /// Create all tables in the database
+  CreateAllTables,
 }
 
 pub async fn handle_command(command: Command, user_service: UserService) -> Result<(), Box<dyn std::error::Error>> {
@@ -83,10 +86,13 @@ pub async fn handle_command(command: Command, user_service: UserService) -> Resu
       unreachable!("Serve command should be handled in main.rs")
     },
     Command::Migrates { .. } => {
-      // Migrates commands are handled directly in main.rs since they don't need UserService
-      unreachable!("Migrates commands should be handled in main.rs")
+      unreachable!("Migrates commands should be handled via handle_migrate_command")
     },
   }
+}
+
+pub async fn handle_migrate_command(command: MigrateCommand) -> Result<(), Box<dyn std::error::Error>> {
+  migrates::execute(command).await
 }
 
 async fn handle_user_command(

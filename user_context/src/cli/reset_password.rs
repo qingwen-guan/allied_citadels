@@ -1,4 +1,4 @@
-use account_context::UserService;
+use user_context::UserService;
 use uuid::Uuid;
 
 pub async fn execute(user_service: UserService, uuid_or_nickname: String) -> Result<(), Box<dyn std::error::Error>> {

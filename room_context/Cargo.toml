@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-account_context = { path = "../account_context" }
+user_context = { path = "../user_context" }
 common_context = { path = "../common_context" }
 async-trait = "0.1.89"
 chrono = "0.4"

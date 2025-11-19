@@ -5,7 +5,6 @@ mod infra;
 mod migrations;
 mod room_service;
 
-pub use account_context::UserId;
 pub use config::Config;
 pub use domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
 pub use domain::{RawMessageRepository, Room, RoomManager, RoomParticipant, RoomRepository};
@@ -16,3 +15,4 @@ pub use migrations::{
   create_user_to_room_message_table, drop_room_table,
 };
 pub use room_service::RoomService;
+pub use user_context::UserId;

@@ -1,5 +1,5 @@
-use account_context::UserId;
 use sqlx::PgPool;
+use user_context::UserId;
 
 use crate::domain::repositories::RawMessageRepository;
 use crate::domain::valueobjects::{MessageContent, MessageTopic, RoomId, RoomToUserMessageId, UserToRoomMessageId};
@@ -20,12 +20,7 @@ impl PostgresMessageRepository {
 #[async_trait::async_trait]
 impl RawMessageRepository for PostgresMessageRepository {
   async fn insert_room_to_user_raw_message(
-    // TODO: take RoomToUserRawMessage as paramater
-    &self,
-    room_id: RoomId,
-    user_id: UserId,
-    topic: MessageTopic,
-    content: MessageContent,
+    &self, message: RoomToUserRawMessage,
   ) -> Result<RoomToUserRawMessage, RoomError> {
     let id = RoomToUserMessageId::from(uuid::Uuid::new_v4());
 
@@ -33,20 +28,25 @@ impl RawMessageRepository for PostgresMessageRepository {
       "INSERT INTO room_to_user_message (id, room_id, user_id, topic, content, created_at)
        VALUES ($1, $2, $3, $4, $5, NOW())",
     )
-    .bind(id)
-    .bind(room_id)
-    .bind(user_id)
-    .bind(&topic)
-    .bind(&content)
+    .bind(id) // TODO: use message.id()
+    .bind(message.room_id())
+    .bind(message.user_id())
+    .bind(message.topic())
+    .bind(message.content())
     .execute(&self.pool)
     .await?;
 
-    Ok(RoomToUserRawMessage::new(id, room_id, user_id, topic, content))
+    Ok(RoomToUserRawMessage::new(
+      id,
+      message.room_id(),
+      message.user_id(),
+      message.topic().clone(),
+      message.content().clone(),
+    ))
   }
 
   async fn batch_insert_room_to_user_raw_messages(
-    &self,
-    messages: Vec<(RoomId, UserId, MessageTopic, MessageContent)>, // TODO: take [RoomToUserRawMessage] as paramater
+    &self, messages: Vec<RoomToUserRawMessage>,
   ) -> Result<Vec<RoomToUserRawMessage>, RoomError> {
     if messages.is_empty() {
       return Ok(Vec::new());
@@ -59,8 +59,12 @@ impl RawMessageRepository for PostgresMessageRepository {
     // Collect all data first to avoid borrowing issues
     let data: Vec<(RoomToUserMessageId, RoomId, UserId, MessageTopic, MessageContent)> = messages
       .into_iter()
-      .map(|(room_id, user_id, topic, content)| {
+      .map(|message| {
         let id = RoomToUserMessageId::from(uuid::Uuid::new_v4());
+        let room_id = message.room_id();
+        let user_id = message.user_id();
+        let topic = message.topic().clone();
+        let content = message.content().clone();
         results.push(RoomToUserRawMessage::new(
           id,
           room_id,
@@ -175,31 +179,35 @@ impl RawMessageRepository for PostgresMessageRepository {
   }
 
   async fn insert_user_to_room_raw_message(
-    &self,
-    room_id: RoomId,
-    user_id: UserId,
-    topic: MessageTopic,
-    content: MessageContent, // TODO: take UserToRoomRawMessage as paramater
+    &self, message: UserToRoomRawMessage,
   ) -> Result<UserToRoomRawMessage, RoomError> {
+    // TODO: return ()
     let id = UserToRoomMessageId::from(uuid::Uuid::new_v4());
 
     sqlx::query(
       "INSERT INTO user_to_room_message (id, room_id, user_id, topic, content, created_at)
        VALUES ($1, $2, $3, $4, $5, NOW())",
     )
-    .bind(id)
-    .bind(room_id)
-    .bind(user_id)
-    .bind(&topic)
-    .bind(&content)
+    .bind(id) // TODO: use message.id()
+    .bind(message.room_id())
+    .bind(message.user_id())
+    .bind(message.topic())
+    .bind(message.content())
     .execute(&self.pool)
     .await?;
 
-    Ok(UserToRoomRawMessage::new(id, room_id, user_id, topic, content))
+    Ok(UserToRoomRawMessage::new(
+      id,
+      message.room_id(),
+      message.user_id(),
+      message.topic().clone(),
+      message.content().clone(),
+    ))
   }
 
   async fn batch_insert_user_to_room_raw_messages(
-    &self, messages: Vec<(RoomId, UserId, MessageTopic, MessageContent)>,
+    &self,
+    messages: Vec<UserToRoomRawMessage>, // TODO: take [UserToRoomRawMessage] as paramater
   ) -> Result<Vec<UserToRoomRawMessage>, RoomError> {
     if messages.is_empty() {
       return Ok(Vec::new());
@@ -212,8 +220,12 @@ impl RawMessageRepository for PostgresMessageRepository {
     // Collect all data first to avoid borrowing issues
     let data: Vec<(UserToRoomMessageId, RoomId, UserId, MessageTopic, MessageContent)> = messages
       .into_iter()
-      .map(|(room_id, user_id, topic, content)| {
-        let id = UserToRoomMessageId::from(uuid::Uuid::new_v4());
+      .map(|message| {
+        let id = UserToRoomMessageId::from(uuid::Uuid::new_v4()); // TODO: use message.id()
+        let room_id = message.room_id();
+        let user_id = message.user_id();
+        let topic = message.topic().clone();
+        let content = message.content().clone();
         results.push(UserToRoomRawMessage::new(
           id,
           room_id,

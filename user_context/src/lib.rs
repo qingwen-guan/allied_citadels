@@ -2,7 +2,7 @@ mod config;
 mod domain;
 mod error;
 mod infra;
-mod migrations;
+mod migrations; // TODO: pub use
 mod user_service;
 
 pub use config::Config;
@@ -15,4 +15,4 @@ pub use domain::{
 };
 pub use error::UserError;
 pub use infra::{PostgresSessionRepository, PostgresUserRepository};
-pub use migrations::{create_user_session_table, create_user_table, drop_table_user_session};
+pub use migrations::{create_user_session_table, create_user_table, drop_table_user_session}; // TODO: remove

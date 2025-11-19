@@ -1,5 +1,5 @@
-use account_context::UserId;
 use sqlx::Row;
+use user_context::UserId;
 
 use crate::domain::valueobjects::{MessageContent, MessageTopic, RoomId, UserToRoomMessageId};
 
@@ -25,6 +25,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for UserToRoomRawMessage {
 }
 
 impl UserToRoomRawMessage {
+  // TODO: do not pass id
   pub fn new(
     id: UserToRoomMessageId, room_id: RoomId, user_id: UserId, topic: MessageTopic, content: MessageContent,
   ) -> Self {

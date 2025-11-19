@@ -1,5 +1,5 @@
-use account_context::UserId;
 use sqlx::PgPool;
+use user_context::UserId;
 
 use crate::domain::repositories::{Pagination, RoomRepository};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};

@@ -1,4 +1,4 @@
-use account_context::UserId;
+use user_context::UserId;
 use uuid::Uuid;
 
 pub use super::room_to_user_message_details::RoomToUserMessageDetails;
