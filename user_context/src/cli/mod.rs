@@ -101,8 +101,11 @@ async fn handle_user_command(
   match command {
     UserCommand::List => list::execute(user_service).await,
     UserCommand::Create { nickname } => {
-      let (user_id, password) = user_service.create_user(&nickname).await?;
-      println!("user_id: {}, nickname: {}, password: {}", user_id, nickname, password);
+      let response = user_service.create_user(&nickname).await?;
+      println!(
+        "user_id: {}, nickname: {}, password: {}",
+        response.user_id, nickname, response.password
+      );
       Ok(())
     },
     UserCommand::Get { nickname } => {

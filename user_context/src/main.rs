@@ -140,11 +140,11 @@ async fn get_user(
 async fn create_user(
   State(service): State<Arc<UserService>>, Json(payload): Json<CreateUserRequest>,
 ) -> Result<Json<CreateUserResponse>, AppError> {
-  let (user_id, password) = service.create_user(&payload.nickname).await?;
+  let result = service.create_user(&payload.nickname).await?;
   Ok(Json(CreateUserResponse {
-    user_id,
+    user_id: result.user_id,
     nickname: payload.nickname,
-    password,
+    password: result.password,
   }))
 }
 

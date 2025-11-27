@@ -20,6 +20,14 @@ pub struct UserService {
   session_manager: SessionManager,
 }
 
+/// Response for creating a new user
+/// NOTE: Uses String instead of domain types per service layer rules
+#[derive(Debug, Clone)]
+pub struct CreateUserResponse {
+  pub user_id: String,
+  pub password: String,
+}
+
 /// Result of resetting a password
 #[allow(dead_code)]
 pub struct ResetPasswordResult {
@@ -28,10 +36,10 @@ pub struct ResetPasswordResult {
   pub password: String,
 }
 
-/// Result of logging in
+/// Response for logging in
 /// NOTE: Uses String instead of domain types (SessionId, UserId) per service layer rules
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LoginResult {
+pub struct LoginResponse {
   pub session_id: String,
   pub user_id: String,
 }
@@ -44,10 +52,10 @@ pub struct UserResponse {
   pub nickname: String,
 }
 
-/// Result of resetting password by name
+/// Response for resetting password by name
 /// NOTE: Uses String instead of domain types per service layer rules
 #[derive(Debug, Clone)]
-pub struct ResetPasswordByNameResult {
+pub struct ResetPasswordByNameResponse {
   pub user_id: String,
   pub password: String,
 }
@@ -80,15 +88,17 @@ impl UserService {
   /// Create a new user with a randomly generated password
   /// NOTE: Returns String (user_id) instead of UserId per service layer rules
   #[instrument(skip(self), fields(nickname = nickname_str))]
-  // TODO: return a struct
-  pub async fn create_user(&self, nickname_str: &str) -> Result<(String, String), UserError> {
+  pub async fn create_user(&self, nickname_str: &str) -> Result<CreateUserResponse, UserError> {
     let nickname = NickName::from(nickname_str);
     let result = self.user_manager.create_user(&nickname).await;
     match &result {
       Ok(_) => info!("Successfully created user: {}", nickname_str),
       Err(e) => error!("Failed to create user {}: {:?}", nickname_str, e),
     }
-    result.map(|(user_id, p)| (user_id.to_string(), p.into_string()))
+    result.map(|(user_id, p)| CreateUserResponse {
+      user_id: user_id.to_string(),
+      password: p.into_string(),
+    })
   }
 
   /// Get user by user_id (UUID string)
@@ -174,25 +184,26 @@ impl UserService {
   }
 
   /// Reset password for a user by nickname
-  /// NOTE: Returns ResetPasswordByNameResult instead of tuple with UserId per service layer rules
+  /// NOTE: Returns ResetPasswordByNameResponse instead of tuple with UserId per service layer rules
   #[instrument(skip(self), fields(nickname = nickname_str))]
-  pub async fn reset_password_by_name(&self, nickname_str: &str) -> Result<ResetPasswordByNameResult, UserError> {
+  pub async fn reset_password_by_name(&self, nickname_str: &str) -> Result<ResetPasswordByNameResponse, UserError> {
     let nickname = NickName::from(nickname_str);
     let result = self.user_manager.reset_password_by_name(&nickname).await;
     match &result {
       Ok(_) => info!("Successfully reset password for user: {}", nickname_str),
       Err(e) => error!("Failed to reset password for user {}: {:?}", nickname_str, e),
     }
-    result.map(|(user_id, p)| ResetPasswordByNameResult {
+    result.map(|(user_id, p)| ResetPasswordByNameResponse {
       user_id: user_id.to_string(),
       password: p.into_string(),
     })
   }
 
-  /// Delete user by UserId
-  // TODO: take user_uuid: Uuid, and convert it to UserId
-  #[instrument(skip(self), fields(user_id = %user_id))]
-  pub async fn delete_user(&self, user_id: UserId) -> Result<(), UserError> {
+  /// Delete user by User UUID
+  /// NOTE: Takes Uuid and converts to UserId internally to keep domain types inside
+  #[instrument(skip(self), fields(user_id = %user_uuid))]
+  pub async fn delete_user(&self, user_uuid: Uuid) -> Result<(), UserError> {
+    let user_id = UserId::from(user_uuid);
     let result = self.user_manager.delete_user(user_id).await;
     match &result {
       Ok(_) => info!("Successfully deleted user: {}", user_id),
@@ -214,9 +225,9 @@ impl UserService {
   }
 
   /// Verify login credentials and create a session
-  /// NOTE: Returns LoginResult with String fields instead of domain types per service layer rules
+  /// NOTE: Returns LoginResponse with String fields instead of domain types per service layer rules
   #[instrument(skip(self), fields(nickname = nickname_str))]
-  pub async fn login(&self, nickname_str: &str, password_str: &str) -> Result<LoginResult, UserError> {
+  pub async fn login(&self, nickname_str: &str, password_str: &str) -> Result<LoginResponse, UserError> {
     use crate::domain::valueobjects::RawPassword;
 
     let nickname = NickName::from(nickname_str);
@@ -227,7 +238,7 @@ impl UserService {
     let session_id = self.session_manager.create_session(user_id).await?;
 
     info!("User {} logged in successfully, session: {}", nickname_str, session_id);
-    Ok(LoginResult {
+    Ok(LoginResponse {
       session_id: session_id.to_string(),
       user_id: user_id.to_string(),
     })
