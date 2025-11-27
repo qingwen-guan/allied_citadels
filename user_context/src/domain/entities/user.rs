@@ -1,39 +1,41 @@
 use sqlx::Row;
-use uuid::Uuid;
 
-use crate::domain::valueobjects::{NickName, SaltedPassword};
+use crate::domain::valueobjects::{NickName, SaltedPassword, UserId};
 
 #[derive(Debug)]
 pub struct User {
-  uuid: Uuid,
+  id: UserId,
   nickname: NickName,
   salted_password: SaltedPassword,
-  password_change_deadline: Option<chrono::DateTime<chrono::Utc>>, // TODO: make it required
+  password_change_deadline: chrono::DateTime<chrono::Utc>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for User {
   fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
     Ok(User {
-      uuid: row.try_get("uuid")?,
+      id: row.try_get("uuid")?,
       nickname: NickName::from(row.try_get::<String, _>("nickname")?),
       salted_password: SaltedPassword::from_string(row.try_get::<String, _>("salted_password")?),
-      password_change_deadline: row.try_get("password_change_deadline").ok().flatten(),
+      password_change_deadline: row.try_get("password_change_deadline")?,
     })
   }
 }
 
 impl User {
-  pub fn new(uuid: Uuid, nickname: impl Into<NickName>, salted_password: SaltedPassword) -> Self {
+  pub fn new(
+    id: UserId, nickname: impl Into<NickName>, salted_password: SaltedPassword,
+    password_change_deadline: chrono::DateTime<chrono::Utc>,
+  ) -> Self {
     Self {
-      uuid,
+      id,
       nickname: nickname.into(),
       salted_password,
-      password_change_deadline: None,
+      password_change_deadline,
     }
   }
 
-  pub fn uuid(&self) -> Uuid {
-    self.uuid
+  pub fn id(&self) -> UserId {
+    self.id
   }
 
   pub fn nickname(&self) -> &NickName {
@@ -44,7 +46,7 @@ impl User {
     &self.salted_password
   }
 
-  pub fn password_change_deadline(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+  pub fn password_change_deadline(&self) -> chrono::DateTime<chrono::Utc> {
     self.password_change_deadline
   }
 }

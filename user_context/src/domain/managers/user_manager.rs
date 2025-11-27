@@ -1,9 +1,7 @@
-use uuid::Uuid;
-
 use crate::domain::entities::User;
 use crate::domain::factories::UserFactory;
 use crate::domain::repositories::UserRepository;
-use crate::domain::valueobjects::{NickName, RawPassword, SaltedPassword};
+use crate::domain::valueobjects::{NickName, RawPassword, SaltedPassword, UserId};
 use crate::error::UserError;
 
 pub struct UserManager {
@@ -20,7 +18,7 @@ impl UserManager {
   }
 
   /// Create a new user with a randomly generated password
-  pub async fn create_user(&self, nickname: &NickName) -> Result<(Uuid, RawPassword), UserError> {
+  pub async fn create_user(&self, nickname: &NickName) -> Result<(UserId, RawPassword), UserError> {
     // Check if nickname already exists
     if self.user_repository.exists_by_nickname(nickname).await? {
       return Err(UserError::NicknameExists);
@@ -28,16 +26,19 @@ impl UserManager {
 
     // Use cryptographically secure random number generation
     let password = RawPassword::generate_random_default(6);
-    let user = self.user_factory.create(nickname, &password);
+    let password_change_deadline = chrono::Utc::now() + chrono::Duration::days(1);
+    let user = self
+      .user_factory
+      .create(nickname.clone(), &password, password_change_deadline);
 
     self.user_repository.create(&user).await?;
 
-    Ok((user.uuid(), password))
+    Ok((user.id(), password))
   }
 
-  /// Get user by UUID
-  pub async fn get_user_by_uuid(&self, uuid: Uuid) -> Result<Option<User>, UserError> {
-    self.user_repository.find_by_uuid(uuid).await
+  /// Get user by UserId
+  pub async fn get_user_by_id(&self, user_id: UserId) -> Result<Option<User>, UserError> {
+    self.user_repository.find_by_id(user_id).await
   }
 
   /// Get user by nickname
@@ -59,31 +60,28 @@ impl UserManager {
   }
 
   /// Update user nickname
-  pub async fn update_user_nickname(&self, uuid: Uuid, new_nickname: &NickName) -> Result<(), UserError> {
+  pub async fn update_user_nickname(&self, user_id: UserId, new_nickname: &NickName) -> Result<(), UserError> {
     // Check if new nickname already exists (excluding current user)
     if self
       .user_repository
-      .exists_by_nickname_excluding(new_nickname, uuid)
+      .exists_by_nickname_excluding(new_nickname, user_id)
       .await?
     {
       return Err(UserError::NicknameExists);
     }
 
     // Update nickname
-    self
-      .user_repository
-      .update_nickname(uuid, new_nickname.as_str())
-      .await?;
+    self.user_repository.update_nickname(user_id, new_nickname).await?;
 
     Ok(())
   }
 
-  /// Reset password for a user by UUID
-  pub async fn reset_password_by_uuid(&self, uuid: Uuid) -> Result<RawPassword, UserError> {
+  /// Reset password for a user by UserId
+  pub async fn reset_password_by_id(&self, user_id: UserId) -> Result<RawPassword, UserError> {
     // Check if user exists
     let _user = self
       .user_repository
-      .find_by_uuid(uuid)
+      .find_by_id(user_id)
       .await?
       .ok_or(UserError::NotFound)?;
 
@@ -92,32 +90,30 @@ impl UserManager {
     let salted_password = SaltedPassword::new(&new_password, self.user_factory.password_salt());
 
     // Update password
-    self.user_repository.update_password(uuid, &salted_password).await?;
+    self.user_repository.update_password(user_id, &salted_password).await?;
 
     Ok(new_password)
   }
 
   /// Reset password for a user by nickname
-  pub async fn reset_password_by_name(&self, nickname: &NickName) -> Result<(Uuid, RawPassword), UserError> {
+  pub async fn reset_password_by_name(&self, nickname: &NickName) -> Result<(UserId, RawPassword), UserError> {
     // Find user by nickname
     let user = self.user_repository.find_by_nickname(nickname).await?;
+    let user_id = user.id();
 
     // Generate new password
     let new_password = RawPassword::generate_random_default(6);
     let salted_password = SaltedPassword::new(&new_password, self.user_factory.password_salt());
 
     // Update password
-    self
-      .user_repository
-      .update_password(user.uuid(), &salted_password)
-      .await?;
+    self.user_repository.update_password(user_id, &salted_password).await?;
 
-    Ok((user.uuid(), new_password))
+    Ok((user_id, new_password))
   }
 
-  /// Delete user by UUID
-  pub async fn delete_user(&self, uuid: Uuid) -> Result<(), UserError> {
-    let deleted = self.user_repository.delete(uuid).await?;
+  /// Delete user by UserId
+  pub async fn delete_user(&self, user_id: UserId) -> Result<(), UserError> {
+    let deleted = self.user_repository.delete(user_id).await?;
     if !deleted {
       return Err(UserError::NotFound);
     }
@@ -127,7 +123,7 @@ impl UserManager {
   /// Delete user by nickname
   pub async fn delete_user_by_nickname(&self, nickname: &NickName) -> Result<(), UserError> {
     let user = self.user_repository.find_by_nickname(nickname).await?;
-    self.delete_user(user.uuid()).await
+    self.delete_user(user.id()).await
   }
 
   /// Login with nickname and password

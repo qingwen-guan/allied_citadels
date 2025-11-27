@@ -22,7 +22,7 @@ impl Config {
   pub fn load() -> Result<Self, UserError> {
     let config_path = find_config_file().ok_or_else(|| {
       UserError::Config(ConfigError::FileNotFound(
-        "config/user_context.toml not found in workspace root".to_string(),
+        "user_context/config/default_user_context.toml not found".to_string(),
       ))
     })?;
 
@@ -91,25 +91,25 @@ impl Config {
 }
 
 fn find_config_file() -> Option<PathBuf> {
-  // Try to find config file (user_context.toml)
+  // Try to find config/default_user_context.toml in the user_context directory
   if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
     let manifest_path = PathBuf::from(manifest_dir);
-    // If we're in a workspace, go up to find the workspace root
-    if let Some(parent) = manifest_path.parent() {
-      let user_config_path = parent.join("config").join("user_context.toml");
-      if user_config_path.exists() {
-        return Some(user_config_path);
-      }
+    let config_path = manifest_path.join("config").join("default_user_context.toml");
+    if config_path.exists() {
+      return Some(config_path);
     }
   }
 
-  // Walk up from current directory looking for config file
+  // Walk up from current directory looking for user_context/config/default_user_context.toml
   let mut current = env::current_dir().ok()?;
 
   for _ in 0..10 {
-    let user_config_path = current.join("config").join("user_context.toml");
-    if user_config_path.exists() {
-      return Some(user_config_path);
+    let config_path = current
+      .join("user_context")
+      .join("config")
+      .join("default_user_context.toml");
+    if config_path.exists() {
+      return Some(config_path);
     }
 
     if let Some(parent) = current.parent() {

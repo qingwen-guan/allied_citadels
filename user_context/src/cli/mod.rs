@@ -91,8 +91,8 @@ pub async fn handle_command(command: Command, user_service: UserService) -> Resu
   }
 }
 
-pub async fn handle_migrate_command(command: MigrateCommand) -> Result<(), Box<dyn std::error::Error>> {
-  migrates::execute(command).await
+pub async fn handle_migrate_command(dsn: &str, command: MigrateCommand) -> Result<(), Box<dyn std::error::Error>> {
+  migrates::execute(dsn, command).await
 }
 
 async fn handle_user_command(
@@ -101,18 +101,14 @@ async fn handle_user_command(
   match command {
     UserCommand::List => list::execute(user_service).await,
     UserCommand::Create { nickname } => {
-      let (uuid, password) = user_service.create_user(&nickname).await?;
-      println!("uuid: {}, nickname: {}, password: {}", uuid, nickname, password);
+      let (user_id, password) = user_service.create_user(&nickname).await?;
+      println!("user_id: {}, nickname: {}, password: {}", user_id, nickname, password);
       Ok(())
     },
     UserCommand::Get { nickname } => {
       match user_service.get_user_by_nickname(&nickname).await? {
         Some(user) => {
-          println!(
-            "User found: uuid={}, nickname={}",
-            user.uuid(),
-            user.nickname().as_str()
-          );
+          println!("User found: user_id={}, nickname={}", user.user_id, user.nickname);
         },
         None => {
           println!("User not found with nickname: {}", nickname);

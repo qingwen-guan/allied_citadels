@@ -1,5 +1,5 @@
 use tracing::{error, info, instrument};
-use user_context::UserId;
+use user_context::{UserId, UserRepository};
 
 use crate::domain::repositories::{Pagination, RawMessageRepository};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
@@ -11,8 +11,11 @@ pub struct RoomService {
 }
 
 impl RoomService {
-  pub fn new(room_repository: Box<dyn RoomRepository>, message_repository: Box<dyn RawMessageRepository>) -> Self {
-    let room_manager = RoomManager::new(room_repository, message_repository);
+  pub fn new(
+    room_repository: Box<dyn RoomRepository>, user_repository: Box<dyn UserRepository>,
+    message_repository: Box<dyn RawMessageRepository>,
+  ) -> Self {
+    let room_manager = RoomManager::new(room_repository, user_repository, message_repository);
     Self { room_manager }
   }
 

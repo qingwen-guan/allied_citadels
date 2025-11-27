@@ -1,4 +1,4 @@
-use user_context::UserId;
+use user_context::{UserId, UserRepository};
 
 use crate::domain::entities::{Room, RoomParticipant, RoomToUserMessage, RoomToUserMessageDetails};
 use crate::domain::managers::MessageManager;
@@ -50,15 +50,18 @@ pub enum TakeSeatResult {
 
 pub struct RoomManager {
   room_repository: Box<dyn RoomRepository>,
+  user_repository: Box<dyn UserRepository>,
   message_manager: MessageManager,
 }
 
 impl RoomManager {
   pub fn new(
-    room_repository: Box<dyn RoomRepository>, raw_message_repository: Box<dyn RawMessageRepository>,
+    room_repository: Box<dyn RoomRepository>, user_repository: Box<dyn UserRepository>,
+    raw_message_repository: Box<dyn RawMessageRepository>,
   ) -> Self {
     Self {
       room_repository,
+      user_repository,
       message_manager: MessageManager::new(raw_message_repository),
     }
   }
@@ -97,6 +100,20 @@ impl RoomManager {
   pub async fn create_room(
     &self, name: &RoomName, creator: UserId, max_players: MaxPlayers,
   ) -> Result<Room, RoomError> {
+    // Validate that the creator exists
+    let user = self
+      .user_repository
+      .find_by_id(creator)
+      .await
+      .map_err(|e| RoomError::InvalidOperation(format!("Failed to validate creator: {}", e)))?;
+
+    if user.is_none() {
+      return Err(RoomError::InvalidOperation(format!(
+        "Creator {} does not exist",
+        creator
+      )));
+    }
+
     // Create the room (repository handles room number generation)
     self.room_repository.create(creator, name, max_players).await
   }

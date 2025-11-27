@@ -11,14 +11,15 @@ pub async fn execute(room_service: RoomService) -> Result<(), Box<dyn std::error
   println!("Found {} room(s):", rooms.len());
   println!();
   for room in rooms {
+    let created_at_local = room.created_at().with_timezone(&chrono::Local);
     println!(
-      "  UUID: {}, Number: {}, Name: {}, Creator: {}, Max Players: {}, Created: {}",
+      "  UUID: {}, Number: {:06}, Name: {}, Creator: {}, Max Players: {}, Created: {}",
       room.id(),
       room.number().value(),
       room.name().as_str(),
       room.creator(),
       room.max_players().value(),
-      room.created_at()
+      created_at_local.format("%Y-%m-%d %H:%M:%S")
     );
   }
 

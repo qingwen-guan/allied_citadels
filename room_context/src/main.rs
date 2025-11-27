@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
+use user_context::PostgresUserRepository;
 use uuid::Uuid;
 
 #[derive(Serialize)]
@@ -71,8 +72,9 @@ async fn create_pool(config: &Config) -> Result<sqlx::PgPool, RoomError> {
 async fn create_room_service(config: &Config) -> Result<RoomService, RoomError> {
   let pool = create_pool(config).await?;
   let room_repository = Box::new(PostgresRoomRepository::new(pool.clone()));
+  let user_repository = Box::new(PostgresUserRepository::new(pool.clone()));
   let message_repository = Box::new(PostgresMessageRepository::new(pool));
-  Ok(RoomService::new(room_repository, message_repository))
+  Ok(RoomService::new(room_repository, user_repository, message_repository))
 }
 
 #[tokio::main]
@@ -86,29 +88,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   // Handle commands that don't need RoomService
   if let cli::Command::Migrates { command } = &cli.command {
+    let config = Config::load()?;
     match command {
       cli::MigrateCommand::CreateUserTable => {
-        let user_config = user_context::Config::load()?;
-        user_context::create_user_table(&user_config.dsn).await?;
+        user_context::migrations::create_user_table(&config.dsn).await?;
       },
       cli::MigrateCommand::CreateRoomTable => {
-        let config = Config::load()?;
-        room_context::create_room_table(&config).await?;
+        room_context::create_room_table(&config.dsn).await?;
       },
       cli::MigrateCommand::DropRoomTable => {
-        let config = Config::load()?;
-        room_context::drop_room_table(&config).await?;
+        room_context::drop_room_table(&config.dsn).await?;
       },
       cli::MigrateCommand::CreateRoomToUserMessageTable => {
-        let config = Config::load()?;
-        room_context::create_room_to_user_message_table(&config).await?;
+        room_context::create_room_to_user_message_table(&config.dsn).await?;
       },
-      cli::MigrateCommand::CreateUserToRoomMessageTable => {
-        let config = Config::load()?;
-        room_context::create_user_to_room_message_table(&config).await?;
+      cli::MigrateCommand::CreateAllTables => {
+        room_context::create_all_tables(&config.dsn).await?;
       },
       cli::MigrateCommand::DropAllTables => {
-        let config = Config::load()?;
         common_context::drop_all_tables(&config.dsn).await?;
       },
     }

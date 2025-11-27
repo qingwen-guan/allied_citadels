@@ -21,13 +21,13 @@ impl MessageManager {
         let user_id = message.user_id();
         let topic = message.topic();
         let content = message.content();
-        RoomToUserRawMessage::without_id(room_id, user_id, topic, content) // TODO: RoomToUserRaowMessage::new()
+        RoomToUserRawMessage::without_id(room_id, user_id, topic, content)
       })
       .collect();
 
     self
       .message_repository
-      .batch_insert_room_to_user_raw_messages(raw_messages)
+      .batch_insert_room_to_user_raw_messages(&raw_messages)
       .await?;
     Ok(())
   }

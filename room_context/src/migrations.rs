@@ -1,14 +1,13 @@
 use sqlx::postgres::PgPoolOptions;
 
-use crate::config::Config;
 use crate::error::RoomError;
 
-pub async fn create_room_table(config: &Config) -> Result<(), RoomError> {
+pub async fn create_room_table(dsn: &str) -> Result<(), RoomError> {
   println!("Creating room table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
-    .connect(&config.dsn)
+    .connect(dsn)
     .await
     .map_err(RoomError::Database)?;
 
@@ -75,12 +74,12 @@ pub async fn create_room_table(config: &Config) -> Result<(), RoomError> {
   Ok(())
 }
 
-pub async fn create_room_participant_table(config: &Config) -> Result<(), RoomError> {
+pub async fn create_room_participant_table(dsn: &str) -> Result<(), RoomError> {
   println!("Creating room_participant table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
-    .connect(&config.dsn)
+    .connect(dsn)
     .await
     .map_err(RoomError::Database)?;
 
@@ -112,8 +111,7 @@ pub async fn create_room_participant_table(config: &Config) -> Result<(), RoomEr
         seat_number SMALLINT CHECK (seat_number IS NULL OR (seat_number >= 0 AND seat_number <= 5)),
         viewing_seat_number SMALLINT CHECK (viewing_seat_number IS NULL OR (viewing_seat_number >= 0 AND viewing_seat_number <= 5)),
         joined_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (room_id, user_id),
-        UNIQUE (room_id, seat_number) WHERE seat_number IS NOT NULL
+        PRIMARY KEY (room_id, user_id)
     )
     "#,
   )
@@ -132,7 +130,7 @@ pub async fn create_room_participant_table(config: &Config) -> Result<(), RoomEr
     .map_err(RoomError::Database)?;
 
   sqlx::query(
-    "CREATE INDEX IF NOT EXISTS idx_room_participant_seat_number ON room_participant(room_id, seat_number)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_room_participant_seat_number ON room_participant(room_id, seat_number) WHERE seat_number IS NOT NULL",
   )
   .execute(&pool)
   .await
@@ -149,12 +147,12 @@ pub async fn create_room_participant_table(config: &Config) -> Result<(), RoomEr
   Ok(())
 }
 
-pub async fn create_room_to_user_message_table(config: &Config) -> Result<(), RoomError> {
+pub async fn create_room_to_user_message_table(dsn: &str) -> Result<(), RoomError> {
   println!("Creating room_to_user_message table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
-    .connect(&config.dsn)
+    .connect(dsn)
     .await
     .map_err(RoomError::Database)?;
 
@@ -231,94 +229,12 @@ pub async fn create_room_to_user_message_table(config: &Config) -> Result<(), Ro
   Ok(())
 }
 
-pub async fn create_user_to_room_message_table(config: &Config) -> Result<(), RoomError> {
-  println!("Creating user_to_room_message table...");
-
-  let pool = PgPoolOptions::new()
-    .max_connections(1)
-    .connect(&config.dsn)
-    .await
-    .map_err(RoomError::Database)?;
-
-  // Check if table exists
-  let table_exists: bool = sqlx::query_scalar(
-    r#"
-    SELECT EXISTS (
-      SELECT FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      AND table_name = 'user_to_room_message'
-    )
-    "#,
-  )
-  .fetch_one(&pool)
-  .await
-  .map_err(RoomError::Database)?;
-
-  if table_exists {
-    println!("Table user_to_room_message already exists.");
-    println!();
-    return Ok(());
-  }
-
-  sqlx::query(
-    r#"
-    CREATE TABLE IF NOT EXISTS user_to_room_message (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        room_id UUID NOT NULL REFERENCES room(id) ON DELETE CASCADE,
-        user_id UUID NOT NULL,
-        topic VARCHAR(255) NOT NULL,
-        content TEXT NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-        read_at TIMESTAMP WITH TIME ZONE
-    )
-    "#,
-  )
-  .execute(&pool)
-  .await
-  .map_err(RoomError::Database)?;
-
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_room_id ON user_to_room_message(room_id)")
-    .execute(&pool)
-    .await
-    .map_err(RoomError::Database)?;
-
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_user_id ON user_to_room_message(user_id)")
-    .execute(&pool)
-    .await
-    .map_err(RoomError::Database)?;
-
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_topic ON user_to_room_message(topic)")
-    .execute(&pool)
-    .await
-    .map_err(RoomError::Database)?;
-
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_created_at ON user_to_room_message(created_at)")
-    .execute(&pool)
-    .await
-    .map_err(RoomError::Database)?;
-
-  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_room_message_read_at ON user_to_room_message(read_at)")
-    .execute(&pool)
-    .await
-    .map_err(RoomError::Database)?;
-
-  println!();
-  println!("{}", "=".repeat(40));
-  println!("User to room message table created successfully!");
-  println!("{}", "=".repeat(40));
-  println!("Table: user_to_room_message");
-  println!("Columns: id, room_id, user_id, topic, content, created_at, read_at");
-  println!();
-
-  Ok(())
-}
-
-pub async fn drop_room_table(config: &Config) -> Result<(), RoomError> {
+pub async fn drop_room_table(dsn: &str) -> Result<(), RoomError> {
   println!("Dropping room table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
-    .connect(&config.dsn)
+    .connect(dsn)
     .await
     .map_err(RoomError::Database)?;
 
@@ -352,6 +268,36 @@ pub async fn drop_room_table(config: &Config) -> Result<(), RoomError> {
   println!("Room table dropped successfully!");
   println!("{}", "=".repeat(40));
   println!("Dropped table: room");
+  println!();
+
+  Ok(())
+}
+
+pub async fn create_all_tables(dsn: &str) -> Result<(), RoomError> {
+  println!("Creating all tables...");
+  println!();
+
+  // Create all user-related tables (user, user_session, user_to_user_message)
+  user_context::migrations::create_all_tables(dsn)
+    .await
+    .map_err(|e| match e {
+      user_context::UserError::Database(db_err) => RoomError::Database(db_err),
+      e => RoomError::InvalidOperation(format!("Failed to create user tables: {}", e)),
+    })?;
+
+  // Create room table (no dependencies on other tables)
+  create_room_table(dsn).await?;
+
+  // Create room_participant table (depends on room table)
+  create_room_participant_table(dsn).await?;
+
+  // Create room_to_user_message table (depends on room table)
+  create_room_to_user_message_table(dsn).await?;
+
+  println!();
+  println!("{}", "=".repeat(40));
+  println!("All tables created successfully!");
+  println!("{}", "=".repeat(40));
   println!();
 
   Ok(())

@@ -1,4 +1,4 @@
-[account]
+[user]
 # PostgreSQL database connection string
 # Format: postgresql://user:password@host:port/database
 dsn = "postgresql://postgres:Pwd123@localhost:15432/allied_citadels"

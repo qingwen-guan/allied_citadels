@@ -15,11 +15,10 @@ use tower_http::cors::CorsLayer;
 use user_context::{
   Config, PostgresSessionRepository, PostgresUserRepository, Salt, UserError, UserFactory, UserService,
 };
-use uuid::Uuid;
 
 #[derive(Serialize)]
 struct UserResponse {
-  uuid: String,
+  user_id: String,
   nickname: String,
 }
 
@@ -30,7 +29,7 @@ struct CreateUserRequest {
 
 #[derive(Serialize)]
 struct CreateUserResponse {
-  uuid: Uuid,
+  user_id: String,
   nickname: String,
   password: String,
 }
@@ -74,19 +73,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
     .init();
 
-  let cli = cli::Cli::parse(); // TODO: parse only once
-  let command = cli.command;
+  let cli = cli::Cli::parse();
+  let config = Config::load()?;
 
   // Handle commands that don't need UserService
-  if let cli::Command::Migrates { command } = command {
-    return cli::handle_migrate_command(command).await;
+  match cli.command {
+    cli::Command::Migrates { command } => {
+      return cli::handle_migrate_command(&config.dsn, command).await;
+    },
+    _ => {},
   }
-
-  let config = Config::load()?;
   let user_service = create_user_service(&config).await?;
 
-  // Re-parse CLI for commands that need UserService (since we consumed it above)
-  let cli = cli::Cli::parse();
   match cli.command {
     cli::Command::Serve => {
       let app = create_router(Arc::new(user_service));
@@ -121,8 +119,8 @@ async fn list_users(State(service): State<Arc<UserService>>) -> Result<Json<Vec<
   let response: Vec<UserResponse> = users
     .into_iter()
     .map(|user| UserResponse {
-      uuid: user.uuid().to_string(),
-      nickname: user.nickname().to_string(),
+      user_id: user.user_id,
+      nickname: user.nickname,
     })
     .collect();
   Ok(Json(response))
@@ -134,17 +132,17 @@ async fn get_user(
   let user = service.get_user_by_nickname(&nickname).await?;
   let user = user.ok_or(AppError::NotFound)?;
   Ok(Json(UserResponse {
-    uuid: user.uuid().to_string(),
-    nickname: user.nickname().to_string(),
+    user_id: user.user_id,
+    nickname: user.nickname,
   }))
 }
 
 async fn create_user(
   State(service): State<Arc<UserService>>, Json(payload): Json<CreateUserRequest>,
 ) -> Result<Json<CreateUserResponse>, AppError> {
-  let (uuid, password) = service.create_user(&payload.nickname).await?;
+  let (user_id, password) = service.create_user(&payload.nickname).await?;
   Ok(Json(CreateUserResponse {
-    uuid,
+    user_id,
     nickname: payload.nickname,
     password,
   }))
@@ -153,11 +151,11 @@ async fn create_user(
 async fn reset_password(
   State(service): State<Arc<UserService>>, axum::extract::Path(nickname): axum::extract::Path<String>,
 ) -> Result<Json<CreateUserResponse>, AppError> {
-  let (uuid, password) = service.reset_password_by_name(&nickname).await?;
+  let result = service.reset_password_by_name(&nickname).await?;
   Ok(Json(CreateUserResponse {
-    uuid,
+    user_id: result.user_id,
     nickname,
-    password,
+    password: result.password,
   }))
 }
 

@@ -45,8 +45,6 @@ pub enum RoomCommand {
   UpdateName { uuid: String, new_name: String },
   /// Update room max players
   UpdateMaxPlayers { uuid: String, max_players: usize },
-  /// Chat command (placeholder for future implementation)
-  Chat { room_uuid: String, message: String },
 }
 
 #[derive(Subcommand)]
@@ -57,10 +55,10 @@ pub enum MigrateCommand {
   DropRoomTable,
   /// Create the room_to_user_message table in the database
   CreateRoomToUserMessageTable,
-  /// Create the user_to_room_message table in the database
-  CreateUserToRoomMessageTable,
   /// Create the user table in the database (delegated to user_context)
   CreateUserTable,
+  /// Create all tables in the database
+  CreateAllTables,
   /// Drop all tables from the database
   DropAllTables,
 }
@@ -106,6 +104,7 @@ async fn handle_room_command(
     RoomCommand::Get { name } => {
       match room_service.get_room_by_name(&name).await? {
         Some(room) => {
+          let created_at_local = room.created_at().with_timezone(&chrono::Local);
           println!(
             "Room found: uuid={}, number={}, name={}, creator={}, max_players={}, created_at={}",
             room.id(),
@@ -113,7 +112,7 @@ async fn handle_room_command(
             room.name().as_str(),
             room.creator(),
             room.max_players().value(),
-            room.created_at()
+            created_at_local.format("%Y-%m-%d %H:%M:%S")
           );
         },
         None => {
@@ -127,6 +126,7 @@ async fn handle_room_command(
       let room_id = RoomId::from(uuid);
       match room_service.get_room_by_id(room_id).await? {
         Some(room) => {
+          let created_at_local = room.created_at().with_timezone(&chrono::Local);
           println!(
             "Room found: uuid={}, number={}, name={}, creator={}, max_players={}, created_at={}",
             room.id(),
@@ -134,7 +134,7 @@ async fn handle_room_command(
             room.name().as_str(),
             room.creator(),
             room.max_players().value(),
-            room.created_at()
+            created_at_local.format("%Y-%m-%d %H:%M:%S")
           );
         },
         None => {
@@ -161,15 +161,6 @@ async fn handle_room_command(
       let room_id = RoomId::from(uuid);
       room_service.update_room_max_players(room_id, max_players).await?;
       println!("Updated max players for UUID: {}", uuid);
-      Ok(())
-    },
-    RoomCommand::Chat { room_uuid, message } => {
-      // TODO: Implement chat functionality
-      // TODO: call room_servie.chat()
-      println!(
-        "Chat command not yet implemented. Room: {}, Message: {}",
-        room_uuid, message
-      );
       Ok(())
     },
   }

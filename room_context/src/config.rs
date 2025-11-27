@@ -20,7 +20,7 @@ impl Config {
   pub fn load() -> Result<Self, RoomError> {
     let config_path = find_config_file().ok_or_else(|| {
       RoomError::Config(ConfigError::FileNotFound(
-        "config/room_context.toml not found in workspace root".to_string(),
+        "room_context/config/default_room_context.toml not found".to_string(),
       ))
     })?;
 
@@ -78,23 +78,23 @@ impl Config {
 }
 
 fn find_config_file() -> Option<PathBuf> {
-  // Try to find config/room_context.toml in workspace root
+  // Try to find config/default_room_context.toml in the room_context directory
   if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
     let manifest_path = PathBuf::from(manifest_dir);
-    // If we're in a workspace, go up to find the workspace root
-    if let Some(parent) = manifest_path.parent() {
-      let config_path = parent.join("config").join("room_context.toml");
-      if config_path.exists() {
-        return Some(config_path);
-      }
+    let config_path = manifest_path.join("config").join("default_room_context.toml");
+    if config_path.exists() {
+      return Some(config_path);
     }
   }
 
-  // Walk up from current directory looking for config/room_context.toml
+  // Walk up from current directory looking for room_context/config/default_room_context.toml
   let mut current = env::current_dir().ok()?;
 
   for _ in 0..10 {
-    let config_path = current.join("config").join("room_context.toml");
+    let config_path = current
+      .join("room_context")
+      .join("config")
+      .join("default_room_context.toml");
     if config_path.exists() {
       return Some(config_path);
     }

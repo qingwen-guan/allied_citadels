@@ -11,8 +11,8 @@ pub use domain::{RawMessageRepository, Room, RoomManager, RoomParticipant, RoomR
 pub use error::RoomError;
 pub use infra::{PostgresMessageRepository, PostgresRoomRepository};
 pub use migrations::{
-  create_room_participant_table, create_room_table, create_room_to_user_message_table,
-  create_user_to_room_message_table, drop_room_table,
+  create_all_tables, create_room_participant_table, create_room_table, create_room_to_user_message_table,
+  drop_room_table,
 };
 pub use room_service::RoomService;
 pub use user_context::UserId;

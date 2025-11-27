@@ -36,7 +36,8 @@ pub async fn create_user_table(dsn: &str) -> Result<(), UserError> {
     CREATE TABLE IF NOT EXISTS "user" (
         uuid UUID PRIMARY KEY,
         nickname VARCHAR(255) UNIQUE NOT NULL,
-        salted_password VARCHAR(255) NOT NULL
+        salted_password VARCHAR(255) NOT NULL,
+        password_change_deadline TIMESTAMP WITH TIME ZONE NOT NULL
     )
     "#,
   )
@@ -160,5 +161,91 @@ pub async fn drop_table_user_session(dsn: &str) -> Result<(), UserError> {
   println!("Dropped table: user_session");
   println!();
 
+  Ok(())
+}
+
+pub async fn create_user_to_user_message_table(dsn: &str) -> Result<(), UserError> {
+  println!("Creating user_to_user_message table...");
+
+  let pool = PgPoolOptions::new()
+    .max_connections(1)
+    .connect(dsn)
+    .await
+    .map_err(UserError::Database)?;
+
+  // Check if table exists
+  let table_exists: bool = sqlx::query_scalar(
+    r#"
+    SELECT EXISTS (
+      SELECT FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name = 'user_to_user_message'
+    )
+    "#,
+  )
+  .fetch_one(&pool)
+  .await
+  .map_err(UserError::Database)?;
+
+  if table_exists {
+    println!("Table user_to_user_message already exists.");
+    println!();
+    return Ok(());
+  }
+
+  sqlx::query(
+    r#"
+    CREATE TABLE IF NOT EXISTS user_to_user_message (
+        id UUID PRIMARY KEY,
+        from_user_id UUID NOT NULL REFERENCES "user"(uuid) ON DELETE CASCADE,
+        to_user_id UUID NOT NULL REFERENCES "user"(uuid) ON DELETE CASCADE,
+        topic VARCHAR(255) NOT NULL,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        read_at TIMESTAMP WITH TIME ZONE
+    )
+    "#,
+  )
+  .execute(&pool)
+  .await
+  .map_err(UserError::Database)?;
+
+  sqlx::query(
+    "CREATE INDEX IF NOT EXISTS idx_user_to_user_message_from_user_id ON user_to_user_message(from_user_id)",
+  )
+  .execute(&pool)
+  .await
+  .map_err(UserError::Database)?;
+
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_user_message_to_user_id ON user_to_user_message(to_user_id)")
+    .execute(&pool)
+    .await
+    .map_err(UserError::Database)?;
+
+  sqlx::query("CREATE INDEX IF NOT EXISTS idx_user_to_user_message_created_at ON user_to_user_message(created_at)")
+    .execute(&pool)
+    .await
+    .map_err(UserError::Database)?;
+
+  println!();
+  println!("{}", "=".repeat(40));
+  println!("User to user message table created successfully!");
+  println!("{}", "=".repeat(40));
+  println!("Table: user_to_user_message");
+  println!("Columns: id, from_user_id, to_user_id, topic, content, created_at, read_at");
+  println!();
+
+  Ok(())
+}
+
+pub async fn create_all_tables(dsn: &str) -> Result<(), UserError> {
+  create_user_table(dsn).await?;
+  create_user_session_table(dsn).await?;
+  create_user_to_user_message_table(dsn).await?;
+  println!();
+  println!("{}", "=".repeat(40));
+  println!("All tables created successfully!");
+  println!("{}", "=".repeat(40));
+  println!();
   Ok(())
 }
