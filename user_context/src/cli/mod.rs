@@ -2,6 +2,7 @@ mod list;
 mod list_sessions;
 mod login;
 mod migrates;
+mod rename;
 mod reset_password;
 mod session;
 
@@ -50,6 +51,13 @@ pub enum UserCommand {
   Delete { nickname: String },
   /// Reset password for a user
   ResetPassword { uuid_or_nickname: String },
+  /// Rename a user by UUID or current nickname
+  Rename {
+    /// User UUID or current nickname
+    uuid_or_nickname: String,
+    /// New nickname
+    new_nickname: String,
+  },
 }
 
 #[derive(Subcommand)]
@@ -125,6 +133,10 @@ async fn handle_user_command(
       Ok(())
     },
     UserCommand::ResetPassword { uuid_or_nickname } => reset_password::execute(user_service, uuid_or_nickname).await,
+    UserCommand::Rename {
+      uuid_or_nickname,
+      new_nickname,
+    } => rename::execute(user_service, uuid_or_nickname, new_nickname).await,
   }
 }
 

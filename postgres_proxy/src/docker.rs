@@ -287,11 +287,6 @@ pub fn init_postgres(config: &Config) -> Result<(), PostgresError> {
   } else {
     println!("Container {} already exists.", config.docker.container_name);
     println!();
-    println!("NOTE: If you're experiencing UTF-8 encoding errors, the container");
-    println!("may have been created with incorrect locale settings. To fix this:");
-    println!("1. Run 'postgres_proxy clean' to remove the existing container");
-    println!("2. Run 'postgres_proxy init' again to create a new container with UTF-8 locale");
-    println!();
 
     start_existing_container(&config.docker.container_name, config)?;
   }

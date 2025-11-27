@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::domain::valueobjects::{SessionId, UserId};
 use crate::domain::{
-  NickName, SessionInfo, SessionManager, SessionRepository, UserFactory, UserManager, UserRepository,
+  NickName, SessionInfo, SessionManager, SessionRepository, User, UserFactory, UserManager, UserRepository,
 };
 use crate::error::UserError;
 
@@ -70,6 +70,15 @@ pub struct SessionInfoResponse {
   pub expires_at: String,
   pub is_expired: bool,
   pub status: String,
+}
+
+/// Response for renaming a user
+/// NOTE: Uses String instead of domain types per service layer rules
+#[derive(Debug, Clone)]
+pub struct RenameUserResponse {
+  pub user_id: String,
+  pub old_nickname: String,
+  pub new_nickname: String,
 }
 
 impl UserService {
@@ -156,7 +165,7 @@ impl UserService {
   pub async fn update_user_nickname(&self, user_id_str: &str, new_nickname_str: &str) -> Result<(), UserError> {
     let user_id = parse_user_id(user_id_str)?;
     let new_nickname = NickName::from(new_nickname_str);
-    let result = self.user_manager.update_user_nickname(user_id, &new_nickname).await;
+    let result = self.user_manager.update_nickname(user_id, &new_nickname).await;
     match &result {
       Ok(_) => info!(
         "Successfully updated user nickname: {} -> {}",
@@ -168,6 +177,62 @@ impl UserService {
       ),
     }
     result
+  }
+
+  async fn rename_user_internal(
+    &self, user: User, new_nickname: &NickName, new_nickname_str: &str,
+  ) -> Result<RenameUserResponse, UserError> {
+    let old_nickname = user.nickname().as_str().to_string();
+
+    let update_nickname_result = self.user_manager.update_nickname(user.id(), new_nickname).await;
+    match &update_nickname_result {
+      Ok(_) => info!("Successfully renamed user: {} -> {}", old_nickname, new_nickname_str),
+      Err(e) => error!(
+        "Failed to rename user {} -> {}: {:?}",
+        old_nickname, new_nickname_str, e
+      ),
+    }
+
+    update_nickname_result.map(|_| RenameUserResponse {
+      user_id: user.id().to_string(),
+      old_nickname,
+      new_nickname: new_nickname_str.to_string(),
+    })
+  }
+
+  /// Rename user by UUID or current nickname
+  /// NOTE: Accepts either a user_id (UUID string) or current nickname as identifier
+  #[instrument(skip(self), fields(identifier = uuid_or_nickname, new_nickname = new_nickname_str))]
+  pub async fn rename_user(
+    &self, uuid_or_nickname: &str, new_nickname_str: &str,
+  ) -> Result<Option<RenameUserResponse>, UserError> {
+    let new_nickname = NickName::from(new_nickname_str);
+
+    // Try to parse as UUID first
+    if let Ok(user_id) = parse_user_id(uuid_or_nickname) {
+      // Fetch current user to capture old nickname
+      let user_opt = self.user_manager.get_user_by_id(user_id).await?;
+      let Some(user) = user_opt else {
+        return Err(UserError::NotFound);
+      };
+
+      self
+        .rename_user_internal(user, &new_nickname, new_nickname_str)
+        .await
+        .map(Some)
+    } else {
+      // Treat identifier as current nickname
+      let current_nickname = NickName::from(uuid_or_nickname);
+      let user_opt = self.user_manager.get_user_by_nickname(&current_nickname).await?;
+      let Some(user) = user_opt else {
+        return Err(UserError::NotFound);
+      };
+
+      self
+        .rename_user_internal(user, &new_nickname, new_nickname_str)
+        .await
+        .map(Some)
+    }
   }
 
   /// Reset password for a user by user_id (UUID string)

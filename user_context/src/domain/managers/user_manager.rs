@@ -60,7 +60,7 @@ impl UserManager {
   }
 
   /// Update user nickname
-  pub async fn update_user_nickname(&self, user_id: UserId, new_nickname: &NickName) -> Result<(), UserError> {
+  pub async fn update_nickname(&self, user_id: UserId, new_nickname: &NickName) -> Result<(), UserError> {
     // Check if new nickname already exists (excluding current user)
     if self
       .user_repository
