@@ -64,8 +64,8 @@ pub enum UserCommand {
 pub enum SessionCommand {
   /// List all sessions
   List,
-  /// List non-expired sessions (active and expiring)
-  ListNonExpired,
+  /// List active (non-expired) sessions
+  ListActive,
   /// Get session by session ID
   Get { session_id: String },
 }
@@ -145,7 +145,7 @@ async fn handle_session_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
   match command {
     SessionCommand::List => list_sessions::execute(user_service).await,
-    SessionCommand::ListNonExpired => session::list_non_expired(user_service).await,
+    SessionCommand::ListActive => session::list_active(user_service).await,
     SessionCommand::Get { session_id } => session::get(user_service, session_id).await,
   }
 }

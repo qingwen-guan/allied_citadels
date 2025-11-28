@@ -300,6 +300,19 @@ impl UserService {
     let user = self.user_manager.login(&nickname, &password).await?;
 
     let user_id = user.id();
+
+    // Auto-expire all existing active sessions for this user before creating a new one
+    let now: chrono::DateTime<chrono::Utc> = chrono::Utc::now();
+    let active_sessions = self.session_manager.list_active_sessions_by_user_id(user_id).await?;
+    let sessions_ids: Vec<SessionId> = active_sessions.into_iter().map(|s| s.session_id).collect();
+
+    if !sessions_ids.is_empty() {
+      self
+        .session_manager
+        .set_expiration_for_sessions(&sessions_ids, now)
+        .await?;
+    }
+
     let session_id = self.session_manager.create_session(user_id).await?;
 
     info!("User {} logged in successfully, session: {}", nickname_str, session_id);
@@ -316,9 +329,7 @@ impl UserService {
     let session_id = parse_session_id(session_id_str)?;
     let session_info = self.session_manager.get_session(session_id).await?;
     match session_info.status {
-      crate::domain::SessionStatus::Active | crate::domain::SessionStatus::Expiring => {
-        Ok(session_info.user_id.to_string())
-      },
+      crate::domain::SessionStatus::Active => Ok(session_info.user_id.to_string()),
       crate::domain::SessionStatus::Expired => Err(UserError::InvalidOperation("Session expired".to_string())),
     }
   }
@@ -331,11 +342,11 @@ impl UserService {
     Ok(sessions.into_iter().map(convert_session_info).collect())
   }
 
-  /// List non-expired sessions (Active and Expiring)
+  /// List active (non-expired) sessions
   /// NOTE: Returns Vec<SessionInfoResponse> instead of Vec<SessionInfo> per service layer rules
   #[instrument(skip(self))]
-  pub async fn list_non_expired_sessions(&self) -> Result<Vec<SessionInfoResponse>, UserError> {
-    let sessions = self.session_manager.list_non_expired_sessions().await?;
+  pub async fn list_active_sessions(&self) -> Result<Vec<SessionInfoResponse>, UserError> {
+    let sessions = self.session_manager.list_active_sessions().await?;
     Ok(sessions.into_iter().map(convert_session_info).collect())
   }
 

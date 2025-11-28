@@ -46,15 +46,15 @@ impl SessionManager {
     self.session_repository.delete_by_user_id(user_id).await
   }
 
-  /// Set expiration time for all active sessions of a specific user
+  /// Set expiration time for specific sessions by their IDs
   /// This gives existing sessions a grace period before they expire
   /// Returns the number of sessions that were updated
-  pub async fn set_expiration_for_user_sessions(
-    &self, user_id: UserId, expires_at: chrono::DateTime<chrono::Utc>,
+  pub async fn set_expiration_for_sessions(
+    &self, session_ids: &[SessionId], expires_at: chrono::DateTime<chrono::Utc>,
   ) -> Result<u64, UserError> {
     self
       .session_repository
-      .update_expiration_by_user_id(user_id, expires_at)
+      .update_expiration_by_session_ids(session_ids, expires_at)
       .await
   }
 
@@ -63,9 +63,14 @@ impl SessionManager {
     self.session_repository.list_all().await
   }
 
-  /// List non-expired sessions (Active and Expiring)
-  pub async fn list_non_expired_sessions(&self) -> Result<Vec<SessionInfo>, UserError> {
-    self.session_repository.list_non_expired().await
+  /// List active (non-expired) sessions
+  pub async fn list_active_sessions(&self) -> Result<Vec<SessionInfo>, UserError> {
+    self.session_repository.list_active().await
+  }
+
+  /// List active (non-expired) sessions for a specific user
+  pub async fn list_active_sessions_by_user_id(&self, user_id: UserId) -> Result<Vec<SessionInfo>, UserError> {
+    self.session_repository.list_active_by_user_id(user_id).await
   }
 
   /// Get session information by session_id

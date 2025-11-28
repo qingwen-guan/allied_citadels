@@ -6,10 +6,8 @@ use crate::error::UserError;
 /// Session status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionStatus {
-  /// Session is active and has more than 1 minute remaining
+  /// Session is active (not expired)
   Active,
-  /// Session is expiring (less than 1 minute remaining but not yet expired)
-  Expiring,
   /// Session has expired
   Expired,
 }
@@ -18,7 +16,6 @@ impl std::fmt::Display for SessionStatus {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       SessionStatus::Active => write!(f, "ACTIVE"),
-      SessionStatus::Expiring => write!(f, "EXPIRING"),
       SessionStatus::Expired => write!(f, "EXPIRED"),
     }
   }
@@ -57,16 +54,19 @@ pub trait SessionRepository: Send + Sync {
   /// Delete all sessions for a specific user
   async fn delete_by_user_id(&self, user_id: UserId) -> Result<u64, UserError>;
 
-  /// Update expiration time for all active sessions of a specific user
+  /// Update expiration time for the given session IDs
   /// Returns the number of sessions that were updated
-  async fn update_expiration_by_user_id(
-    &self, user_id: UserId, expires_at: chrono::DateTime<chrono::Utc>,
+  async fn update_expiration_by_session_ids(
+    &self, session_ids: &[SessionId], expires_at: chrono::DateTime<chrono::Utc>,
   ) -> Result<u64, UserError>;
   /// List all sessions with user information
   async fn list_all(&self) -> Result<Vec<SessionInfo>, UserError>;
 
-  /// List non-expired sessions (Active and Expiring) with user information
-  async fn list_non_expired(&self) -> Result<Vec<SessionInfo>, UserError>;
+  /// List active (non-expired) sessions with user information
+  async fn list_active(&self) -> Result<Vec<SessionInfo>, UserError>;
+
+  /// List active (non-expired) sessions for a specific user
+  async fn list_active_by_user_id(&self, user_id: UserId) -> Result<Vec<SessionInfo>, UserError>;
 
   /// Get session information by session_id
   async fn get_by_session_id(&self, session_id: SessionId) -> Result<Option<SessionInfo>, UserError>;

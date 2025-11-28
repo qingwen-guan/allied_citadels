@@ -2,14 +2,14 @@ use chrono::Local;
 use user_context::UserService;
 
 pub async fn execute(user_service: UserService) -> Result<(), Box<dyn std::error::Error>> {
-  let sessions = user_service.list_non_expired_sessions().await?;
+  let sessions = user_service.list_active_sessions().await?;
 
   if sessions.is_empty() {
-    println!("No non-expired sessions found.");
+    println!("No active sessions found.");
     return Ok(());
   }
 
-  println!("Found {} non-expired session(s):", sessions.len());
+  println!("Found {} active session(s):", sessions.len());
   println!();
 
   for session in sessions {

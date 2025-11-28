@@ -77,14 +77,24 @@ impl SessionRepository for PostgresSessionRepository {
     Ok(rows_affected)
   }
 
-  async fn update_expiration_by_user_id(
-    &self, user_id: UserId, expires_at: chrono::DateTime<chrono::Utc>,
+  async fn update_expiration_by_session_ids(
+    &self, session_ids: &[SessionId], expires_at: chrono::DateTime<chrono::Utc>,
   ) -> Result<u64, UserError> {
+    // Nothing to do if no sessions are provided
+    if session_ids.is_empty() {
+      return Ok(0);
+    }
+
+    // Convert SessionId newtypes to raw Uuid values for use with ANY($2)
+    let ids: Vec<Uuid> = session_ids.iter().copied().map(Into::into).collect();
+
     let rows_affected = sqlx::query(
-      "UPDATE user_session SET expires_at = LEAST(expires_at, $1) WHERE user_id = $2 AND expires_at > NOW()",
+      "UPDATE user_session \
+       SET expires_at = LEAST(expires_at, $1) \
+       WHERE id = ANY($2) AND expires_at > NOW()",
     )
     .bind(expires_at)
-    .bind(user_id)
+    .bind(&ids)
     .execute(&self.pool)
     .await?
     .rows_affected();
@@ -113,7 +123,6 @@ SELECT
     CASE WHEN expires_at < NOW() THEN true ELSE false END as is_expired,
     CASE 
         WHEN expires_at < NOW() THEN 'expired'
-        WHEN expires_at < NOW() + INTERVAL '1 minute' THEN 'expiring'
         ELSE 'active'
     END as status
 FROM user_session
@@ -130,20 +139,12 @@ ORDER BY created_at DESC
         .map(|row| {
           let status = match row.status.as_str() {
             "active" => SessionStatus::Active,
-            "expiring" => SessionStatus::Expiring,
             "expired" => SessionStatus::Expired,
             _ => {
-              // Fallback: calculate status based on is_expired and time remaining
               if row.is_expired {
                 SessionStatus::Expired
               } else {
-                let now = chrono::Utc::now();
-                let time_until_expiry = row.expires_at - now;
-                if time_until_expiry < chrono::Duration::minutes(1) {
-                  SessionStatus::Expiring
-                } else {
-                  SessionStatus::Active
-                }
+                SessionStatus::Active
               }
             },
           };
@@ -160,7 +161,7 @@ ORDER BY created_at DESC
     )
   }
 
-  async fn list_non_expired(&self) -> Result<Vec<SessionInfo>, UserError> {
+  async fn list_active(&self) -> Result<Vec<SessionInfo>, UserError> {
     #[derive(sqlx::FromRow)]
     struct SessionRow {
       id: Uuid,
@@ -181,7 +182,6 @@ SELECT
     CASE WHEN expires_at < NOW() THEN true ELSE false END as is_expired,
     CASE 
         WHEN expires_at < NOW() THEN 'expired'
-        WHEN expires_at < NOW() + INTERVAL '1 minute' THEN 'expiring'
         ELSE 'active'
     END as status
 FROM user_session
@@ -199,20 +199,73 @@ ORDER BY created_at DESC
         .map(|row| {
           let status = match row.status.as_str() {
             "active" => SessionStatus::Active,
-            "expiring" => SessionStatus::Expiring,
             "expired" => SessionStatus::Expired,
             _ => {
-              // Fallback: calculate status based on is_expired and time remaining
               if row.is_expired {
                 SessionStatus::Expired
               } else {
-                let now = chrono::Utc::now();
-                let time_until_expiry = row.expires_at - now;
-                if time_until_expiry < chrono::Duration::minutes(1) {
-                  SessionStatus::Expiring
-                } else {
-                  SessionStatus::Active
-                }
+                SessionStatus::Active
+              }
+            },
+          };
+          SessionInfo {
+            session_id: SessionId::from(row.id),
+            user_id: UserId::from(row.user_id),
+            created_at: row.created_at,
+            expires_at: row.expires_at,
+            is_expired: row.is_expired,
+            status,
+          }
+        })
+        .collect(),
+    )
+  }
+
+  async fn list_active_by_user_id(&self, user_id: UserId) -> Result<Vec<SessionInfo>, UserError> {
+    #[derive(sqlx::FromRow)]
+    struct SessionRow {
+      id: Uuid,
+      user_id: Uuid,
+      created_at: chrono::DateTime<chrono::Utc>,
+      expires_at: chrono::DateTime<chrono::Utc>,
+      is_expired: bool,
+      status: String,
+    }
+
+    let rows: Vec<SessionRow> = sqlx::query_as(
+      r#"
+SELECT 
+    id,
+    user_id,
+    created_at,
+    expires_at,
+    CASE WHEN expires_at < NOW() THEN true ELSE false END as is_expired,
+    CASE 
+        WHEN expires_at < NOW() THEN 'expired'
+        ELSE 'active'
+    END as status
+FROM user_session
+WHERE expires_at >= NOW() AND user_id = $1
+ORDER BY created_at DESC
+"#,
+    )
+    .bind(user_id)
+    .fetch_all(&self.pool)
+    .await?;
+
+    use crate::domain::SessionStatus;
+    Ok(
+      rows
+        .into_iter()
+        .map(|row| {
+          let status = match row.status.as_str() {
+            "active" => SessionStatus::Active,
+            "expired" => SessionStatus::Expired,
+            _ => {
+              if row.is_expired {
+                SessionStatus::Expired
+              } else {
+                SessionStatus::Active
               }
             },
           };
@@ -250,7 +303,6 @@ SELECT
     CASE WHEN expires_at < NOW() THEN true ELSE false END as is_expired,
     CASE 
         WHEN expires_at < NOW() THEN 'expired'
-        WHEN expires_at < NOW() + INTERVAL '1 minute' THEN 'expiring'
         ELSE 'active'
     END as status
 FROM user_session
@@ -265,20 +317,12 @@ WHERE id = $1
     Ok(row.map(|row| {
       let status = match row.status.as_str() {
         "active" => SessionStatus::Active,
-        "expiring" => SessionStatus::Expiring,
         "expired" => SessionStatus::Expired,
         _ => {
-          // Fallback: calculate status based on is_expired and time remaining
           if row.is_expired {
             SessionStatus::Expired
           } else {
-            let now = chrono::Utc::now();
-            let time_until_expiry = row.expires_at - now;
-            if time_until_expiry < chrono::Duration::minutes(1) {
-              SessionStatus::Expiring
-            } else {
-              SessionStatus::Active
-            }
+            SessionStatus::Active
           }
         },
       };
