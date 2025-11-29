@@ -1,7 +1,7 @@
 use sqlx::Row;
 use user_context::domain::valueobjects::UserId;
 
-use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
+use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber};
 
 /// Parameters for creating a Room with stand_by_limit
 #[derive(Debug)]
@@ -107,11 +107,5 @@ impl Room {
 
   pub fn expires_at(&self) -> chrono::DateTime<chrono::Utc> {
     self.expires_at
-  }
-
-  /// Validate if a seat number is valid for this room's max_players
-  pub fn is_valid_seat_number(&self, seat_number: SeatNumber) -> bool {
-    let max_seat = self.max_players.value() - 1;
-    seat_number.value() <= max_seat
   }
 }

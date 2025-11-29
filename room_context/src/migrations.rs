@@ -110,8 +110,8 @@ pub async fn create_room_participant_table(db: &DbConfig) -> Result<(), RoomErro
     CREATE TABLE IF NOT EXISTS room_participant (
         room_id UUID NOT NULL REFERENCES room(id) ON DELETE CASCADE,
         user_id UUID NOT NULL,
-        seat_number SMALLINT CHECK (seat_number IS NULL OR (seat_number >= 0 AND seat_number <= 5)),
-        viewing_seat_number SMALLINT CHECK (viewing_seat_number IS NULL OR (viewing_seat_number >= 0 AND viewing_seat_number <= 5)),
+        seat_number SMALLINT CHECK (seat_number IS NULL OR ((seat_number >= 0x40 AND seat_number <= 0x43) OR (seat_number >= 0x60 AND seat_number <= 0x65))),
+        viewing_seat_number SMALLINT CHECK (viewing_seat_number IS NULL OR ((viewing_seat_number >= 0x40 AND viewing_seat_number <= 0x43) OR (viewing_seat_number >= 0x60 AND viewing_seat_number <= 0x65))),
         joined_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
         PRIMARY KEY (room_id, user_id)
     )

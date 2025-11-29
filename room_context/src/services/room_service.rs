@@ -7,7 +7,7 @@ use common_context::domain::valueobjects::Pagination;
 use crate::domain::entities::{Room, RoomParticipant};
 use crate::domain::managers::RoomManager;
 use crate::domain::repositories::{RawMessageRepository, RoomRepository};
-use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
+use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, Seat, SeatIndex};
 use crate::errors::RoomError;
 
 /// Outcome of entering a room
@@ -23,7 +23,7 @@ pub enum EnterRoomOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnterRoomRandomSeatOutcome {
   /// User successfully entered the room and took a seat
-  Success(SeatNumber),
+  Success { seat_index: usize, max_players: usize },
   /// User was already in the room
   AlreadyInRoom,
   /// No seats available in the room
@@ -269,13 +269,16 @@ impl RoomService {
       .await?;
     match seat {
       Some(seat_num) => {
+        let seat_index = seat_num.seat_index().value();
+        let max_players = seat_num.max_players().value();
         info!(
           "User {} entered room {} and took random seat {}",
-          user_id,
-          room_id,
-          seat_num.value()
+          user_id, room_id, seat_num
         );
-        Ok(EnterRoomRandomSeatOutcome::Success(seat_num))
+        Ok(EnterRoomRandomSeatOutcome::Success {
+          seat_index,
+          max_players,
+        })
       },
       None => {
         info!("User {} entered room {} but no seats available", user_id, room_id);
@@ -286,9 +289,7 @@ impl RoomService {
 
   /// Take a random available seat in a room
   #[instrument(skip(self), fields(room_id = room_id_str, user_id = user_id_str))]
-  pub async fn take_random_seat(
-    &self, room_id_str: &str, user_id_str: &str,
-  ) -> Result<Option<SeatNumber>, RoomError> {
+  pub async fn take_random_seat(&self, room_id_str: &str, user_id_str: &str) -> Result<Option<Seat>, RoomError> {
     // Parse user_id from string
     let user_id = user_id_str
       .parse::<UserId>()
@@ -325,9 +326,9 @@ impl RoomService {
 
   /// Change seat in a room
   /// Returns true if seat was successfully changed, false otherwise
-  #[instrument(skip(self), fields(room_id = room_id_str, user_id = user_id_str, seat = new_seat_value))]
+  #[instrument(skip(self), fields(room_id = room_id_str, user_id = user_id_str, seat = new_seat_index))]
   pub async fn change_seat(
-    &self, room_id_str: &str, user_id_str: &str, new_seat_value: usize,
+    &self, room_id_str: &str, user_id_str: &str, new_seat_index: usize,
   ) -> Result<bool, RoomError> {
     // Parse user_id from string
     let user_id = user_id_str
@@ -339,35 +340,55 @@ impl RoomService {
       .parse::<RoomId>()
       .map_err(|e| RoomError::InvalidOperation(format!("Invalid room_id: {} ({})", room_id_str, e)))?;
 
-    // Create SeatNumber from usize
-    let new_seat = SeatNumber::new(new_seat_value)
-      .map_err(|_| RoomError::InvalidOperation(format!("Seat number {} is out of range", new_seat_value)))?;
+    // Get room to determine max_players for Seat encoding
+    let room = self
+      .room_manager
+      .get_room_by_id(room_id)
+      .await?
+      .ok_or(RoomError::NotFound)?;
+
+    // Create Seat from SeatIndex with max_players context
+    let seat_index = SeatIndex::new(new_seat_index).map_err(|_| {
+      RoomError::InvalidOperation(format!(
+        "Seat number {}/{} is out of range",
+        new_seat_index,
+        room.max_players().value()
+      ))
+    })?;
+    let new_seat = Seat::new(seat_index, room.max_players()).map_err(|_| {
+      RoomError::InvalidOperation(format!(
+        "Seat number {}/{} is invalid",
+        new_seat_index,
+        room.max_players().value(),
+      ))
+    })?;
 
     match self.room_manager.change_seat(room_id, user_id, new_seat).await {
       Ok(crate::domain::managers::ChangeSeatOutcome::Success) => {
         info!(
           "User {} changed to seat {} in room {}",
-          user_id_str, new_seat_value, room_id_str
+          user_id_str, new_seat, room_id_str
         );
         Ok(true)
       },
       Ok(crate::domain::managers::ChangeSeatOutcome::AlreadyInSeat) => {
         info!(
           "User {} is already in seat {} in room {}",
-          user_id_str, new_seat_value, room_id_str
+          user_id_str, new_seat, room_id_str
         );
         Ok(true)
       },
       Ok(crate::domain::managers::ChangeSeatOutcome::SeatOccupied) => {
         info!(
           "User {} tried to change to seat {} in room {} but seat is occupied",
-          user_id_str, new_seat_value, room_id_str
+          user_id_str, new_seat, room_id_str
         );
         Ok(false)
       },
       Ok(crate::domain::managers::ChangeSeatOutcome::SeatOutOfRange) => Err(RoomError::InvalidOperation(format!(
-        "Seat number {} is out of range",
-        new_seat_value
+        "Seat number {}/{} is out of range",
+        new_seat_index,
+        room.max_players().value()
       ))),
       Err(e) => {
         error!(
@@ -415,34 +436,53 @@ impl RoomService {
   }
 
   /// View behind a seat (must be standing by)
-  #[instrument(skip(self), fields(room_id = room_id, user_id = user_id, viewing_seat = viewing_seat))]
-  pub async fn view_behind_seat(&self, room_id: &str, user_id: &str, viewing_seat: usize) -> Result<(), RoomError> {
+  #[instrument(skip(self), fields(room_id = room_id_str, user_id = user_id_str, viewing_seat = viewing_seat_index_value))]
+  pub async fn view_behind_seat(
+    &self, room_id_str: &str, user_id_str: &str, viewing_seat_index_value: usize,
+  ) -> Result<(), RoomError> {
     // Parse user_id from string
-    let user_id_parsed = user_id
+    let user_id = user_id_str
       .parse::<UserId>()
-      .map_err(|e| RoomError::InvalidOperation(format!("Invalid user_id: {} ({})", user_id, e)))?;
+      .map_err(|e| RoomError::InvalidOperation(format!("Invalid user_id: {} ({})", user_id_str, e)))?;
 
     // Parse room_id from string
-    let room_id_parsed = room_id
+    let room_id = room_id_str
       .parse::<RoomId>()
-      .map_err(|e| RoomError::InvalidOperation(format!("Invalid room_id: {} ({})", room_id, e)))?;
+      .map_err(|e| RoomError::InvalidOperation(format!("Invalid room_id: {} ({})", room_id_str, e)))?;
 
-    // Create SeatNumber from usize
-    let viewing_seat_parsed = SeatNumber::new(viewing_seat)
-      .map_err(|_| RoomError::InvalidOperation(format!("Seat number {} is out of range", viewing_seat)))?;
-
-    let result = self
+    // Get room to determine max_players for Seat encoding
+    let room = self
       .room_manager
-      .view_behind_seat(room_id_parsed, user_id_parsed, viewing_seat_parsed)
-      .await;
+      .get_room_by_id(room_id)
+      .await?
+      .ok_or(RoomError::NotFound)?;
+
+    // Create Seat from SeatIndex with max_players context
+    let viewing_seat_index = SeatIndex::new(viewing_seat_index_value).map_err(|_| {
+      RoomError::InvalidOperation(format!(
+        "Seat number {}/{} is out of range",
+        viewing_seat_index_value,
+        room.max_players().value()
+      ))
+    })?;
+    let viewing_seat = Seat::new(viewing_seat_index, room.max_players()).map_err(|_| {
+      RoomError::InvalidOperation(format!(
+        "Seat number {}/{} is invalid for {} max players room",
+        viewing_seat_index_value,
+        room.max_players().value(),
+        room.max_players().value()
+      ))
+    })?;
+
+    let result = self.room_manager.view_behind_seat(room_id, user_id, viewing_seat).await;
     match &result {
       Ok(_) => info!(
         "User {} is viewing behind seat {} in room {}",
-        user_id, viewing_seat, room_id
+        user_id_str, viewing_seat, room_id_str
       ),
       Err(e) => error!(
         "Failed to view behind seat for user {} in room {}: {:?}",
-        user_id, room_id, e
+        user_id_str, room_id_str, e
       ),
     }
     result

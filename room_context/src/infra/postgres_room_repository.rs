@@ -5,7 +5,7 @@ use common_context::domain::valueobjects::Pagination;
 
 use crate::domain::entities::{Room, RoomParticipant};
 use crate::domain::repositories::RoomRepository;
-use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
+use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, Seat};
 use crate::errors::RoomError;
 
 /// PostgreSQL implementation of RoomRepository
@@ -16,6 +16,12 @@ pub struct PostgresRoomRepository {
 impl PostgresRoomRepository {
   pub fn new(pool: PgPool) -> Self {
     Self { pool }
+  }
+
+  /// Helper to get encoded value from Option<Seat> for database storage
+  /// Seat stores i16 internally, which matches database SMALLINT
+  fn get_encoded_seat_option(seat: Option<Seat>) -> Option<i16> {
+    seat.map(|s| s.encoded_value())
   }
 }
 
@@ -159,8 +165,12 @@ impl RoomRepository for PostgresRoomRepository {
   }
 
   async fn add_participant(
-    &self, room_id: RoomId, user_id: UserId, seat_number: Option<SeatNumber>, viewing_seat_number: Option<SeatNumber>,
+    &self, room_id: RoomId, user_id: UserId, seat_number: Option<Seat>, viewing_seat_number: Option<Seat>,
   ) -> Result<RoomParticipant, RoomError> {
+    // Get encoded values (Seat now stores encoded values internally)
+    let encoded_seat = Self::get_encoded_seat_option(seat_number);
+    let encoded_viewing_seat = Self::get_encoded_seat_option(viewing_seat_number);
+
     let joined_at = chrono::Utc::now();
     sqlx::query(
       "INSERT INTO room_participant (room_id, user_id, seat_number, viewing_seat_number, joined_at)
@@ -170,8 +180,8 @@ SET seat_number = EXCLUDED.seat_number, viewing_seat_number = EXCLUDED.viewing_s
     )
     .bind(room_id)
     .bind(user_id)
-    .bind(seat_number)
-    .bind(viewing_seat_number)
+    .bind(encoded_seat)
+    .bind(encoded_viewing_seat)
     .bind(joined_at)
     .execute(&self.pool)
     .await?;
@@ -224,15 +234,18 @@ WHERE room_id = $1 AND user_id = $2",
   }
 
   async fn get_participant_by_seat(
-    &self, room_id: RoomId, seat_number: SeatNumber,
+    &self, room_id: RoomId, seat_number: Seat,
   ) -> Result<Option<RoomParticipant>, RoomError> {
+    // Get encoded value (Seat stores i16 internally, which matches database SMALLINT)
+    let encoded_seat = seat_number.encoded_value();
+
     let participant = sqlx::query_as::<_, RoomParticipant>(
       "SELECT room_id, user_id, seat_number, viewing_seat_number, joined_at
 FROM room_participant
 WHERE room_id = $1 AND seat_number = $2",
     )
     .bind(room_id)
-    .bind(seat_number)
+    .bind(encoded_seat)
     .fetch_optional(&self.pool)
     .await?;
 
@@ -240,8 +253,11 @@ WHERE room_id = $1 AND seat_number = $2",
   }
 
   async fn update_participant_seat(
-    &self, room_id: RoomId, user_id: UserId, new_seat: Option<SeatNumber>,
+    &self, room_id: RoomId, user_id: UserId, new_seat: Option<Seat>,
   ) -> Result<bool, RoomError> {
+    // Get encoded value (Seat now stores encoded values internally)
+    let encoded_seat = Self::get_encoded_seat_option(new_seat);
+
     let rows_affected = sqlx::query(
       "UPDATE room_participant
 SET seat_number = $3, viewing_seat_number = NULL
@@ -249,7 +265,7 @@ WHERE room_id = $1 AND user_id = $2",
     )
     .bind(room_id)
     .bind(user_id)
-    .bind(new_seat)
+    .bind(encoded_seat)
     .execute(&self.pool)
     .await?
     .rows_affected();
@@ -258,7 +274,7 @@ WHERE room_id = $1 AND user_id = $2",
   }
 
   async fn update_participant_viewing(
-    &self, room_id: RoomId, user_id: UserId, viewing_seat: Option<SeatNumber>,
+    &self, room_id: RoomId, user_id: UserId, viewing_seat: Option<Seat>,
   ) -> Result<bool, RoomError> {
     // Check if the user is seated, only update viewing_seat_number if the user is NOT seated
     let participant = self.get_participant(room_id, user_id).await?;
@@ -270,6 +286,9 @@ WHERE room_id = $1 AND user_id = $2",
       ));
     }
 
+    // Get encoded value (Seat now stores encoded values internally)
+    let encoded_viewing_seat = Self::get_encoded_seat_option(viewing_seat);
+
     let rows_affected = sqlx::query(
       "UPDATE room_participant
 SET viewing_seat_number = $3
@@ -277,7 +296,7 @@ WHERE room_id = $1 AND user_id = $2",
     )
     .bind(room_id)
     .bind(user_id)
-    .bind(viewing_seat)
+    .bind(encoded_viewing_seat)
     .execute(&self.pool)
     .await?
     .rows_affected();

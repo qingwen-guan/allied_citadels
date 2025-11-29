@@ -3,7 +3,7 @@ use common_context::domain::valueobjects::Pagination;
 use user_context::domain::valueobjects::UserId;
 
 use crate::domain::entities::{Room, RoomParticipant};
-use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
+use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, Seat};
 use crate::errors::RoomError;
 
 /// RoomRepository trait - interface for room data access
@@ -21,19 +21,19 @@ pub trait RoomRepository: Send + Sync {
 
   // Room participant methods
   async fn add_participant(
-    &self, room_id: RoomId, user_id: UserId, seat_number: Option<SeatNumber>, viewing_seat_number: Option<SeatNumber>,
+    &self, room_id: RoomId, user_id: UserId, seat_number: Option<Seat>, viewing_seat_number: Option<Seat>,
   ) -> Result<RoomParticipant, RoomError>;
   async fn remove_participant(&self, room_id: RoomId, user_id: UserId) -> Result<bool, RoomError>;
   async fn get_participants(&self, room_id: RoomId) -> Result<Vec<RoomParticipant>, RoomError>;
   async fn get_participant(&self, room_id: RoomId, user_id: UserId) -> Result<Option<RoomParticipant>, RoomError>;
   async fn get_participant_by_seat(
-    &self, room_id: RoomId, seat_number: SeatNumber,
+    &self, room_id: RoomId, seat_number: Seat,
   ) -> Result<Option<RoomParticipant>, RoomError>;
   async fn update_participant_seat(
-    &self, room_id: RoomId, user_id: UserId, new_seat: Option<SeatNumber>,
+    &self, room_id: RoomId, user_id: UserId, new_seat: Option<Seat>,
   ) -> Result<bool, RoomError>;
   async fn update_participant_viewing(
-    &self, room_id: RoomId, user_id: UserId, viewing_seat: Option<SeatNumber>,
+    &self, room_id: RoomId, user_id: UserId, viewing_seat: Option<Seat>,
   ) -> Result<bool, RoomError>;
   async fn stand_up_participant(&self, room_id: RoomId, user_id: UserId) -> Result<bool, RoomError>;
   async fn count_participants(&self, room_id: RoomId) -> Result<usize, RoomError>;

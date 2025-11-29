@@ -6,7 +6,7 @@ use crate::domain::managers::MessageManager;
 use common_context::domain::valueobjects::Pagination;
 
 use crate::domain::repositories::{RawMessageRepository, RoomRepository};
-use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
+use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, Seat, SeatIndex};
 use crate::errors::RoomError;
 
 /// Outcome of update_room_max_players operation
@@ -335,7 +335,7 @@ impl RoomManager {
 
   /// Change seat in a room
   pub async fn change_seat(
-    &self, room_id: RoomId, user_id: UserId, new_seat: SeatNumber,
+    &self, room_id: RoomId, user_id: UserId, new_seat: Seat,
   ) -> Result<ChangeSeatOutcome, RoomError> {
     // Check if room exists and is not expired
     let room = self
@@ -358,12 +358,6 @@ impl RoomManager {
     // If already in the same seat, return AlreadyInSeat
     if participant.seat_number() == Some(new_seat) {
       return Ok(ChangeSeatOutcome::AlreadyInSeat);
-    }
-
-    // Validate seat number is within max_players range
-    let max_seat = room.max_players().value() - 1;
-    if new_seat.value() > max_seat {
-      return Ok(ChangeSeatOutcome::SeatOutOfRange);
     }
 
     // Check if new seat is already taken
@@ -389,9 +383,7 @@ impl RoomManager {
   }
 
   /// Take a seat (for users standing by)
-  pub async fn take_seat(
-    &self, room_id: RoomId, user_id: UserId, seat: SeatNumber,
-  ) -> Result<TakeSeatOutcome, RoomError> {
+  pub async fn take_seat(&self, room_id: RoomId, user_id: UserId, seat: Seat) -> Result<TakeSeatOutcome, RoomError> {
     // Check if room exists and is not expired
     let room = self
       .room_repository
@@ -413,12 +405,6 @@ impl RoomManager {
     // Must be standing by to take a seat
     if participant.is_sitting() {
       return Ok(TakeSeatOutcome::NotStandingBy);
-    }
-
-    // Validate seat number is within max_players range
-    let max_seat = room.max_players().value() - 1;
-    if seat.value() > max_seat {
-      return Ok(TakeSeatOutcome::SeatOutOfRange);
     }
 
     // Check if seat is already taken
@@ -471,7 +457,7 @@ impl RoomManager {
 
   /// View behind a seat (must be standing by)
   pub async fn view_behind_seat(
-    &self, room_id: RoomId, user_id: UserId, viewing_seat: SeatNumber,
+    &self, room_id: RoomId, user_id: UserId, viewing_seat: Seat,
   ) -> Result<(), RoomError> {
     // Check if room exists and is not expired
     let room = self
@@ -496,16 +482,6 @@ impl RoomManager {
       return Err(RoomError::InvalidOperation(
         "Cannot view while sitting. Please stand up first.".to_string(),
       ));
-    }
-
-    // Validate viewing seat number is within max_players range
-    let max_seat = room.max_players().value() - 1;
-    if viewing_seat.value() > max_seat {
-      return Err(RoomError::InvalidOperation(format!(
-        "Viewing seat number {} exceeds max players {}",
-        viewing_seat.value(),
-        room.max_players().value()
-      )));
     }
 
     // Update viewing position
@@ -556,19 +532,30 @@ impl RoomManager {
   }
 
   /// Take a random available seat in a room
-  pub async fn take_random_seat(&self, user_id: UserId, room_id: RoomId) -> Result<Option<SeatNumber>, RoomError> {
+  pub async fn take_random_seat(&self, user_id: UserId, room_id: RoomId) -> Result<Option<Seat>, RoomError> {
     let room = self.get_room_by_id(room_id).await?.ok_or(RoomError::NotFound)?;
 
-    // Get occupied seats from participants
+    // Get occupied seats from participants (using encoded values)
     let participants = self.room_repository.get_participants(room_id).await?;
-    let occupied_seats: Vec<usize> = participants
+    let occupied_seats: std::collections::HashSet<i16> = participants
       .into_iter()
-      .filter_map(|p| p.seat_number().map(|s| s.value()))
+      .filter_map(|p| p.seat_number().map(|s| s.encoded_value()))
       .collect();
 
-    // Find available seats
+    // Generate all possible seats using the encoding scheme
     let max_seat = room.max_players().value() - 1;
-    let available_seats: Vec<usize> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
+    let all_seats: Vec<Seat> = (0..=max_seat)
+      .map(|idx| {
+        let seat_index = SeatIndex::new(idx)?;
+        Seat::new(seat_index, room.max_players())
+      })
+      .collect::<Result<Vec<_>, _>>()?;
+
+    // Find available seats (not occupied)
+    let available_seats: Vec<Seat> = all_seats
+      .into_iter()
+      .filter(|seat| !occupied_seats.contains(&seat.encoded_value()))
+      .collect();
 
     if available_seats.is_empty() {
       return Ok(None);
@@ -578,7 +565,7 @@ impl RoomManager {
     use rand::Rng;
     let mut rng = rand::rng();
     let random_index = rng.random_range(0..available_seats.len());
-    let random_seat = SeatNumber::new(available_seats[random_index])?;
+    let random_seat = available_seats[random_index];
 
     // Try to take the seat
     match self.take_seat(room_id, user_id, random_seat).await? {
@@ -590,7 +577,7 @@ impl RoomManager {
   /// Enter a room and take a random available seat
   pub async fn enter_room_and_take_random_seat(
     &self, user_id: UserId, room_id: RoomId,
-  ) -> Result<Option<SeatNumber>, RoomError> {
+  ) -> Result<Option<Seat>, RoomError> {
     // Check if room exists and is not expired
     let room = self
       .room_repository
@@ -602,20 +589,32 @@ impl RoomManager {
       return Err(RoomError::InvalidOperation("Room has expired".to_string()));
     }
 
-    // Get occupied seats from participants before adding participant
+    // Get occupied seats from participants before adding participant (using encoded values)
     let participants = self.room_repository.get_participants(room_id).await?;
-    let occupied_seats: Vec<usize> = participants
+    let occupied_seats: std::collections::HashSet<i16> = participants
       .into_iter()
-      .filter_map(|p| p.seat_number().map(|s| s.value()))
+      .filter_map(|p| p.seat_number().map(|s| s.encoded_value()))
+      .collect();
+
+    // Generate all possible seats using the encoding scheme
+    let max_seat = room.max_players().value() - 1;
+    let all_seats: Vec<Seat> = (0..=max_seat)
+      .map(|idx| {
+        let seat_index = SeatIndex::new(idx)?;
+        Seat::new(seat_index, room.max_players())
+      })
+      .collect::<Result<Vec<_>, _>>()?;
+
+    // Find available seats (not occupied)
+    let available_seats: Vec<Seat> = all_seats
+      .iter()
+      .filter(|seat| !occupied_seats.contains(&seat.encoded_value()))
+      .cloned()
       .collect();
 
     // Check if user is already in the room
     let participant = self.room_repository.get_participant(room_id, user_id).await?;
     let random_seat = if participant.is_none() {
-      // Find available seats
-      let max_seat = room.max_players().value() - 1;
-      let available_seats: Vec<usize> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
-
       if available_seats.is_empty() {
         return Ok(None);
       }
@@ -624,7 +623,7 @@ impl RoomManager {
       use rand::Rng;
       let mut rng = rand::rng();
       let random_index = rng.random_range(0..available_seats.len());
-      let random_seat = SeatNumber::new(available_seats[random_index])?;
+      let random_seat = available_seats[random_index];
 
       // Add participant directly with the seat_number to avoid multiple db queries
       self
@@ -635,9 +634,6 @@ impl RoomManager {
       Some(random_seat)
     } else {
       // User already in room, find available seat and update
-      let max_seat = room.max_players().value() - 1;
-      let available_seats: Vec<usize> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
-
       if available_seats.is_empty() {
         return Ok(None);
       }
@@ -646,7 +642,7 @@ impl RoomManager {
       use rand::Rng;
       let mut rng = rand::rng();
       let random_index = rng.random_range(0..available_seats.len());
-      let random_seat = SeatNumber::new(available_seats[random_index])?;
+      let random_seat = available_seats[random_index];
 
       // Update seat directly
       self

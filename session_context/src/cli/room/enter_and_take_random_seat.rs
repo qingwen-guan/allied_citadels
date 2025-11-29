@@ -15,12 +15,13 @@ pub async fn execute(
     .enter_room_and_take_random_seat(&session_info.user_id, &room_id_str)
     .await?
   {
-    room_service::EnterRoomRandomSeatOutcome::Success(seat_number) => {
+    room_service::EnterRoomRandomSeatOutcome::Success {
+      seat_index,
+      max_players,
+    } => {
       println!(
-        "User {} entered room {} and took seat {}",
-        session_info.user_id,
-        room_id_str,
-        seat_number.value()
+        "User {} entered room {} and took seat {}/{}",
+        session_info.user_id, room_id_str, seat_index, max_players
       );
     },
     room_service::EnterRoomRandomSeatOutcome::AlreadyInRoom => {
