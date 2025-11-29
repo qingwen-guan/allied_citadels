@@ -2300,6 +2300,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "session_context"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum 0.8.7",
+ "chrono",
+ "clap",
+ "common_context",
+ "rand 0.9.2",
+ "room_context",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.17",
+ "tokio",
+ "toml 0.9.8",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "user_context",
+ "uuid",
+]
+
+[[package]]
 name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

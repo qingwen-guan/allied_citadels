@@ -128,16 +128,17 @@ impl UserService {
   /// Get user by nickname
   /// NOTE: Returns UserResponse instead of User per service layer rules
   #[instrument(skip(self), fields(nickname = nickname_str))]
-  pub async fn get_user_by_nickname(&self, nickname_str: &str) -> Result<Option<UserResponse>, UserError> {
+  pub async fn get_user_by_nickname(&self, nickname_str: &str) -> Result<UserResponse, UserError> {
     let nickname = NickName::from(nickname_str);
     let result = self.user_manager.get_user_by_nickname(&nickname).await;
     if let Err(e) = &result {
       error!("Error getting user by nickname {}: {:?}", nickname_str, e);
     }
-    Ok(result?.map(|user| UserResponse {
+    let user = result?.ok_or(UserError::NotFound)?;
+    Ok(UserResponse {
       user_id: user.id().to_string(),
       nickname: user.nickname().as_str().to_string(),
-    }))
+    })
   }
 
   /// List all users

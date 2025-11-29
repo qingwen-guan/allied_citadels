@@ -2,7 +2,9 @@ use user_context::{UserId, UserRepository};
 
 use crate::domain::entities::{Room, RoomParticipant, RoomToUserMessage, RoomToUserMessageDetails};
 use crate::domain::managers::MessageManager;
-use crate::domain::repositories::{Pagination, RawMessageRepository, RoomRepository};
+use common_context::domain::valueobjects::Pagination;
+
+use crate::domain::repositories::{RawMessageRepository, RoomRepository};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
 use crate::error::RoomError;
 
@@ -132,6 +134,11 @@ impl RoomManager {
   /// List all rooms with optional pagination
   pub async fn list_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
     self.room_repository.find_all(pagination).await
+  }
+
+  /// List all active (non-expired) rooms with optional pagination
+  pub async fn list_active_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
+    self.room_repository.find_active(pagination).await
   }
 
   /// Update room name

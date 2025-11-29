@@ -1,11 +1,12 @@
 [package]
-name = "room_context"
+name = "session_context"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-user_context = { path = "../user_context" }
 common_context = { path = "../common_context" }
+user_context = { path = "../user_context" }
+room_context = { path = "../room_context" }
 async-trait = "0.1.89"
 chrono = "0.4"
 clap = { version = "4.5.51", features = ["derive"] }

@@ -1,7 +1,9 @@
 use tracing::{error, info, instrument};
 use user_context::{UserId, UserRepository};
 
-use crate::domain::repositories::{Pagination, RawMessageRepository};
+use common_context::domain::valueobjects::Pagination;
+
+use crate::domain::repositories::RawMessageRepository;
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
 use crate::domain::{Room, RoomManager, RoomParticipant, RoomRepository};
 use crate::error::RoomError;
@@ -65,6 +67,16 @@ impl RoomService {
     let result = self.room_manager.list_rooms(pagination).await;
     if let Err(ref e) = result {
       error!("Error listing rooms: {:?}", e);
+    }
+    result
+  }
+
+  /// List all active (non-expired) rooms with optional pagination
+  #[instrument(skip(self))]
+  pub async fn list_active_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
+    let result = self.room_manager.list_active_rooms(pagination).await;
+    if let Err(ref e) = result {
+      error!("Error listing active rooms: {:?}", e);
     }
     result
   }

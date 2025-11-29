@@ -1,22 +1,10 @@
 use async_trait::async_trait;
+use common_context::domain::valueobjects::Pagination;
 use user_context::UserId;
 
 use crate::domain::entities::{Room, RoomParticipant};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
 use crate::error::RoomError;
-
-/// Pagination parameters for listing rooms
-#[derive(Debug, Clone, Copy)]
-pub struct Pagination {
-  pub limit: usize,
-  pub offset: usize,
-}
-
-impl Default for Pagination {
-  fn default() -> Self {
-    Self { limit: 100, offset: 0 }
-  }
-}
 
 /// RoomRepository trait - interface for room data access
 #[async_trait]
@@ -24,6 +12,7 @@ pub trait RoomRepository: Send + Sync {
   async fn find_by_id(&self, id: RoomId) -> Result<Option<Room>, RoomError>;
   async fn find_by_name(&self, name: &RoomName) -> Result<Vec<Room>, RoomError>;
   async fn find_all(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError>;
+  async fn find_active(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError>;
   async fn create(&self, creator: UserId, name: &RoomName, max_players: MaxPlayers) -> Result<Room, RoomError>;
   async fn update_name(&self, id: RoomId, new_name: &RoomName) -> Result<bool, RoomError>;
   async fn update_max_players(&self, id: RoomId, max_players: MaxPlayers) -> Result<bool, RoomError>;

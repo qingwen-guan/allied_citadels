@@ -117,14 +117,8 @@ async fn handle_user_command(
       Ok(())
     },
     UserCommand::Get { nickname } => {
-      match user_service.get_user_by_nickname(&nickname).await? {
-        Some(user) => {
-          println!("User found: user_id={}, nickname={}", user.user_id, user.nickname);
-        },
-        None => {
-          println!("User not found with nickname: {}", nickname);
-        },
-      }
+      let user = user_service.get_user_by_nickname(&nickname).await?;
+      println!("User found: user_id={}, nickname={}", user.user_id, user.nickname);
       Ok(())
     },
     UserCommand::Delete { nickname } => {

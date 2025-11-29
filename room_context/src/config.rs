@@ -3,17 +3,14 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use common_context::domain::valueobjects::DbConfig;
+
 use crate::error::{ConfigError, RoomError};
 
 #[derive(Debug, Clone)]
 pub struct Config {
-  pub dsn: String,
+  pub db: DbConfig,
   pub server_addr: String,
-  pub max_connections: u32,
-  pub min_connections: u32,
-  pub acquire_timeout_seconds: u64,
-  pub idle_timeout_seconds: u64,
-  pub max_lifetime_seconds: u64,
 }
 
 impl Config {
@@ -33,9 +30,8 @@ impl Config {
     })?;
 
     #[derive(Deserialize)]
-    struct RoomSection {
+    struct DbSection {
       dsn: String,
-      server_addr: String,
       max_connections: u32,
       min_connections: u32,
       #[serde(default = "default_acquire_timeout")]
@@ -59,20 +55,28 @@ impl Config {
     }
 
     #[derive(Deserialize)]
+    struct RoomSection {
+      server_addr: String,
+    }
+
+    #[derive(Deserialize)]
     struct ConfigFile {
       room: RoomSection,
+      db: DbSection,
     }
 
     let config: ConfigFile = toml::from_str(&contents).map_err(|e| RoomError::Config(ConfigError::ParseError(e)))?;
 
     Ok(Config {
-      dsn: config.room.dsn,
+      db: DbConfig {
+        dsn: config.db.dsn,
+        max_connections: config.db.max_connections,
+        min_connections: config.db.min_connections,
+        acquire_timeout_seconds: config.db.acquire_timeout_seconds,
+        idle_timeout_seconds: config.db.idle_timeout_seconds,
+        max_lifetime_seconds: config.db.max_lifetime_seconds,
+      },
       server_addr: config.room.server_addr,
-      max_connections: config.room.max_connections,
-      min_connections: config.room.min_connections,
-      acquire_timeout_seconds: config.room.acquire_timeout_seconds,
-      idle_timeout_seconds: config.room.idle_timeout_seconds,
-      max_lifetime_seconds: config.room.max_lifetime_seconds,
     })
   }
 }

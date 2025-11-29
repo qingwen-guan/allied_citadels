@@ -77,11 +77,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let config = Config::load()?;
 
   // Handle commands that don't need UserService
-  match cli.command {
-    cli::Command::Migrates { command } => {
-      return cli::handle_migrate_command(&config.dsn, command).await;
-    },
-    _ => {},
+  if let cli::Command::Migrates { command } = cli.command {
+    return cli::handle_migrate_command(&config.dsn, command).await;
   }
   let user_service = create_user_service(&config).await?;
 
@@ -130,7 +127,6 @@ async fn get_user(
   State(service): State<Arc<UserService>>, axum::extract::Path(nickname): axum::extract::Path<String>,
 ) -> Result<Json<UserResponse>, AppError> {
   let user = service.get_user_by_nickname(&nickname).await?;
-  let user = user.ok_or(AppError::NotFound)?;
   Ok(Json(UserResponse {
     user_id: user.user_id,
     nickname: user.nickname,

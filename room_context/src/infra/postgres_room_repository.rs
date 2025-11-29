@@ -1,7 +1,9 @@
 use sqlx::PgPool;
 use user_context::UserId;
 
-use crate::domain::repositories::{Pagination, RoomRepository};
+use common_context::domain::valueobjects::Pagination;
+
+use crate::domain::repositories::RoomRepository;
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
 use crate::domain::{Room, RoomParticipant};
 use crate::error::RoomError;
@@ -45,6 +47,19 @@ impl RoomRepository for PostgresRoomRepository {
     let pagination = pagination.unwrap_or_default();
     let rooms = sqlx::query_as::<_, Room>(
       "SELECT id, room_number, room_name, creator, max_players, created_at, expires_at FROM room ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+    )
+    .bind(pagination.limit as i64)
+    .bind(pagination.offset as i64)
+    .fetch_all(&self.pool)
+    .await?;
+
+    Ok(rooms)
+  }
+
+  async fn find_active(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
+    let pagination = pagination.unwrap_or_default();
+    let rooms = sqlx::query_as::<_, Room>(
+      "SELECT id, room_number, room_name, creator, max_players, created_at, expires_at FROM room WHERE expires_at > NOW() ORDER BY created_at DESC LIMIT $1 OFFSET $2",
     )
     .bind(pagination.limit as i64)
     .bind(pagination.offset as i64)

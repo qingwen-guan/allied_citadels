@@ -12,7 +12,6 @@ use room_context::{
   Config, MaxPlayers, PostgresMessageRepository, PostgresRoomRepository, RoomError, RoomId, RoomService, UserId,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
 use user_context::PostgresUserRepository;
@@ -51,22 +50,9 @@ struct ErrorResponse {
 }
 
 async fn create_pool(config: &Config) -> Result<sqlx::PgPool, RoomError> {
-  let pool = PgPoolOptions::new()
-    .max_connections(config.max_connections)
-    .min_connections(config.min_connections)
-    .acquire_timeout(std::time::Duration::from_secs(config.acquire_timeout_seconds))
-    .idle_timeout(Some(std::time::Duration::from_secs(config.idle_timeout_seconds)))
-    .max_lifetime(Some(std::time::Duration::from_secs(config.max_lifetime_seconds)))
-    .connect(&config.dsn)
-    .await?;
-
-  // Test the connection
-  sqlx::query("SELECT 1")
-    .execute(&pool)
+  common_context::database::create_db_pool(&config.db)
     .await
-    .map_err(RoomError::Database)?;
-
-  Ok(pool)
+    .map_err(RoomError::Database)
 }
 
 async fn create_room_service(config: &Config) -> Result<RoomService, RoomError> {
@@ -91,22 +77,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load()?;
     match command {
       cli::MigrateCommand::CreateUserTable => {
-        user_context::migrations::create_user_table(&config.dsn).await?;
+        user_context::migrations::create_user_table(&config.db.dsn).await?;
       },
       cli::MigrateCommand::CreateRoomTable => {
-        room_context::create_room_table(&config.dsn).await?;
+        room_context::create_room_table(&config.db.dsn).await?;
       },
       cli::MigrateCommand::DropRoomTable => {
-        room_context::drop_room_table(&config.dsn).await?;
+        room_context::drop_room_table(&config.db.dsn).await?;
       },
       cli::MigrateCommand::CreateRoomToUserMessageTable => {
-        room_context::create_room_to_user_message_table(&config.dsn).await?;
+        room_context::create_room_to_user_message_table(&config.db.dsn).await?;
       },
       cli::MigrateCommand::CreateAllTables => {
-        room_context::create_all_tables(&config.dsn).await?;
+        room_context::create_all_tables(&config.db.dsn).await?;
       },
       cli::MigrateCommand::DropAllTables => {
-        common_context::drop_all_tables(&config.dsn).await?;
+        common_context::drop_all_tables(&config.db.dsn).await?;
       },
     }
     return Ok(());
