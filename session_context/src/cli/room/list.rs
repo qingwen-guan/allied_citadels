@@ -25,13 +25,14 @@ pub async fn execute(
     let created_at_local = room.created_at.with_timezone(&chrono::Local);
     let expires_at_local = room.expires_at.with_timezone(&chrono::Local);
     println!(
-      "  UUID: {}, Number: {:06}, Name: {}, Creator: {} ({}), Max Players: {}, Created: {}, Expires: {}",
+      "  UUID: {}, Number: {:06}, Name: {}, Creator: {} ({}), Max Players: {}, Seated: {}, Created: {}, Expires: {}",
       room.id,
       room.number,
       room.name,
       room.creator_name,
       room.creator_id,
       room.max_players,
+      room.seated_players,
       created_at_local.format("%Y-%m-%d %H:%M:%S"),
       expires_at_local.format("%Y-%m-%d %H:%M:%S")
     );

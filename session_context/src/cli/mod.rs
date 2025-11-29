@@ -43,6 +43,13 @@ pub enum RoomCommand {
     /// Maximum number of players (4 or 6)
     max_players: usize,
   },
+  /// Enter a room
+  Enter {
+    /// Session ID of the user entering the room
+    session_id: String,
+    /// Room ID (UUID)
+    room_id: String,
+  },
 }
 
 pub async fn handle_command(

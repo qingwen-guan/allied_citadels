@@ -180,8 +180,18 @@ impl RoomService {
   }
 
   /// Enter a room (always enters standing by, use change_seat to take a seat)
-  #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id))]
-  pub async fn enter_room(&self, room_id: RoomId, user_id: UserId) -> Result<(), RoomError> {
+  #[instrument(skip(self), fields(user_id = user_id_str, room_id = room_id_str))]
+  pub async fn enter_room(&self, user_id_str: &str, room_id_str: &str) -> Result<(), RoomError> {
+    // Parse user_id from string
+    let user_id = user_id_str
+      .parse::<UserId>()
+      .map_err(|e| RoomError::InvalidOperation(format!("Invalid user_id: {} ({})", user_id_str, e)))?;
+
+    // Parse room_id from string
+    let room_id = room_id_str
+      .parse::<RoomId>()
+      .map_err(|e| RoomError::InvalidOperation(format!("Invalid room_id: {} ({})", room_id_str, e)))?;
+
     let result = self.room_manager.enter_room_standing_by(user_id, room_id).await;
     match &result {
       Ok(crate::domain::EnterRoomOutcome::Success) => {

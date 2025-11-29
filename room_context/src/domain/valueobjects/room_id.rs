@@ -1,4 +1,5 @@
 use std::fmt;
+use std::str::FromStr;
 
 use uuid::Uuid;
 
@@ -27,6 +28,15 @@ impl From<Uuid> for RoomId {
 impl From<RoomId> for Uuid {
   fn from(value: RoomId) -> Self {
     value.0
+  }
+}
+
+impl FromStr for RoomId {
+  type Err = uuid::Error;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    let uuid = s.parse::<Uuid>()?;
+    Ok(RoomId::from(uuid))
   }
 }
 

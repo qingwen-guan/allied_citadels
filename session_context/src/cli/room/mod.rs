@@ -1,4 +1,5 @@
 mod create;
+mod enter;
 mod list;
 
 use room_context::RoomService;
@@ -20,5 +21,6 @@ pub async fn handle_room_command(
       name,
       max_players,
     } => create::execute(user_service, room_service, session_id, name, max_players).await,
+    RoomCommand::Enter { session_id, room_id } => enter::execute(user_service, room_service, session_id, room_id).await,
   }
 }
