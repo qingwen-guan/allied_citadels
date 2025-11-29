@@ -25,7 +25,15 @@ pub enum Command {
 #[derive(Subcommand)]
 pub enum RoomCommand {
   /// List all active (non-expired) rooms
-  List { session_id: String },
+  List {
+    session_id: String,
+    /// Offset for pagination
+    #[arg(long)]
+    offset: Option<usize>,
+    /// Limit for pagination
+    #[arg(long)]
+    limit: Option<usize>,
+  },
   /// Create a new room
   Create {
     /// Session ID of the user creating the room

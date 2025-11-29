@@ -10,7 +10,11 @@ pub async fn handle_room_command(
   command: RoomCommand, user_service: UserService, room_service: RoomService,
 ) -> Result<(), Box<dyn std::error::Error>> {
   match command {
-    RoomCommand::List { session_id } => list::execute(user_service, room_service, session_id).await,
+    RoomCommand::List {
+      session_id,
+      offset,
+      limit,
+    } => list::execute(user_service, room_service, session_id, offset, limit).await,
     RoomCommand::Create {
       session_id,
       name,

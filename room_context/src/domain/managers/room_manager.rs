@@ -8,46 +8,54 @@ use crate::domain::repositories::{RawMessageRepository, RoomRepository};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
 use crate::error::RoomError;
 
-/// Result enum for update_room_max_players operation
+/// Outcome of update_room_max_players operation
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UpdateMaxPlayersResult {
+pub enum UpdateMaxPlayersOutcome {
   Changed,
   Unchanged,
 }
 
-/// Result enum for enter_room_standing_by operation
+/// Outcome of enter_room_standing_by operation
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EnterRoomResult {
+pub enum EnterRoomOutcome {
   AlreadyInRoom,
   RoomExpired,
   Success,
 }
 
-/// Result enum for change_seat operation
+/// Outcome of change_seat operation
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChangeSeatResult {
+pub enum ChangeSeatOutcome {
   AlreadyInSeat,
   SeatOutOfRange,
   SeatOccupied,
   Success,
 }
 
-/// Result enum for stand_up operation
+/// Outcome of stand_up operation
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StandUpResult {
+pub enum StandUpOutcome {
   AlreadyStanding,
   NotInRoom,
   Success,
 }
 
-/// Result enum for take_seat operation
+/// Outcome of take_seat operation
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TakeSeatResult {
+pub enum TakeSeatOutcome {
   RoomExpired,
   SeatOutOfRange,
   SeatOccupied,
   NotStandingBy,
   Success,
+}
+
+/// Room listing information with creator name and seated players count
+#[derive(Debug, Clone)]
+pub struct RoomListInfo {
+  pub room: Room,
+  pub creator_name: String,
+  pub seated_players: usize,
 }
 
 pub struct RoomManager {
@@ -136,10 +144,33 @@ impl RoomManager {
     self.room_repository.find_all(pagination).await
   }
 
-  /// List all active (non-expired) rooms with optional pagination
-  pub async fn list_active_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> { // TODO: make pagination required
-    let pagination = pagination.unwrap_or_default();
+  /// List all active (non-expired) rooms with pagination
+  pub async fn list_active_rooms(&self, pagination: Pagination) -> Result<Vec<Room>, RoomError> {
     self.room_repository.find_active(pagination).await
+  }
+
+  /// List all active (non-expired) rooms with detailed information
+  pub async fn list_active_rooms_info(&self, pagination: Pagination) -> Result<Vec<RoomListInfo>, RoomError> {
+    let rooms = self.room_repository.find_active(pagination).await?;
+
+    // TODO: batch get creator names and seated players count
+    let mut rooms_info = Vec::new();
+    for room in rooms {
+      let creator_id = room.creator();
+      let creator_name = match self.user_repository.find_by_id(creator_id).await {
+        Ok(Some(user)) => user.nickname().as_str().to_string(),
+        Ok(None) => format!("Unknown ({})", creator_id),
+        Err(_) => format!("Unknown ({})", creator_id),
+      };
+      let seated_count = self.room_repository.count_sitting_participants(room.id()).await?;
+      rooms_info.push(RoomListInfo {
+        room,
+        creator_name,
+        seated_players: seated_count,
+      });
+    }
+
+    Ok(rooms_info)
   }
 
   /// Update room name
@@ -156,14 +187,14 @@ impl RoomManager {
   /// Update room max players
   pub async fn update_room_max_players(
     &self, id: RoomId, max_players: MaxPlayers,
-  ) -> Result<UpdateMaxPlayersResult, RoomError> {
+  ) -> Result<UpdateMaxPlayersOutcome, RoomError> {
     // Check if room exists first
     let room = self.room_repository.find_by_id(id).await?;
     let room = room.ok_or(RoomError::NotFound)?;
 
     // Check if the value is unchanged
     if room.max_players() == max_players {
-      return Ok(UpdateMaxPlayersResult::Unchanged);
+      return Ok(UpdateMaxPlayersOutcome::Unchanged);
     }
 
     let updated = self.room_repository.update_max_players(id, max_players).await?;
@@ -220,7 +251,7 @@ impl RoomManager {
       tracing::error!("Failed to batch send force_stand_up messages in room {}: {:?}", id, e);
     }
 
-    Ok(UpdateMaxPlayersResult::Changed)
+    Ok(UpdateMaxPlayersOutcome::Changed)
   }
 
   /// Delete room by ID
@@ -254,7 +285,9 @@ impl RoomManager {
   }
 
   /// Enter a room (always enters standing by, use change_seat to take a seat)
-  pub async fn enter_room_standing_by(&self, user_id: UserId, room_id: RoomId) -> Result<EnterRoomResult, RoomError> {
+  pub async fn enter_room_standing_by(
+    &self, user_id: UserId, room_id: RoomId,
+  ) -> Result<EnterRoomOutcome, RoomError> {
     // Check if room exists and is not expired
     let room = self
       .room_repository
@@ -263,13 +296,13 @@ impl RoomManager {
       .ok_or(RoomError::NotFound)?;
 
     if chrono::Utc::now() > room.expires_at() {
-      return Ok(EnterRoomResult::RoomExpired);
+      return Ok(EnterRoomOutcome::RoomExpired);
     }
 
     // Check if user is already in the room
     if self.room_repository.get_participant(room_id, user_id).await?.is_some() {
       // If already in room, return AlreadyInRoom
-      return Ok(EnterRoomResult::AlreadyInRoom);
+      return Ok(EnterRoomOutcome::AlreadyInRoom);
     }
 
     // Add participant (always standing by)
@@ -278,7 +311,7 @@ impl RoomManager {
       .add_participant(room_id, user_id, None, None)
       .await?;
 
-    Ok(EnterRoomResult::Success)
+    Ok(EnterRoomOutcome::Success)
   }
 
   /// Leave a room
@@ -302,7 +335,7 @@ impl RoomManager {
   /// Change seat in a room
   pub async fn change_seat(
     &self, room_id: RoomId, user_id: UserId, new_seat: SeatNumber,
-  ) -> Result<ChangeSeatResult, RoomError> {
+  ) -> Result<ChangeSeatOutcome, RoomError> {
     // Check if room exists and is not expired
     let room = self
       .room_repository
@@ -323,20 +356,20 @@ impl RoomManager {
 
     // If already in the same seat, return AlreadyInSeat
     if participant.seat_number() == Some(new_seat) {
-      return Ok(ChangeSeatResult::AlreadyInSeat);
+      return Ok(ChangeSeatOutcome::AlreadyInSeat);
     }
 
     // Validate seat number is within max_players range
     let max_seat = (room.max_players().value() - 1) as u8;
     if new_seat.value() > max_seat {
-      return Ok(ChangeSeatResult::SeatOutOfRange);
+      return Ok(ChangeSeatOutcome::SeatOutOfRange);
     }
 
     // Check if new seat is already taken
     if let Some(existing) = self.room_repository.get_participant_by_seat(room_id, new_seat).await?
       && existing.user_id() != user_id
     {
-      return Ok(ChangeSeatResult::SeatOccupied);
+      return Ok(ChangeSeatOutcome::SeatOccupied);
     }
 
     // Check if room is full (only count sitting participants)
@@ -351,13 +384,13 @@ impl RoomManager {
       .update_participant_seat(room_id, user_id, Some(new_seat))
       .await?;
 
-    Ok(ChangeSeatResult::Success)
+    Ok(ChangeSeatOutcome::Success)
   }
 
   /// Take a seat (for users standing by)
   pub async fn take_seat(
     &self, room_id: RoomId, user_id: UserId, seat: SeatNumber,
-  ) -> Result<TakeSeatResult, RoomError> {
+  ) -> Result<TakeSeatOutcome, RoomError> {
     // Check if room exists and is not expired
     let room = self
       .room_repository
@@ -366,7 +399,7 @@ impl RoomManager {
       .ok_or(RoomError::NotFound)?;
 
     if chrono::Utc::now() > room.expires_at() {
-      return Ok(TakeSeatResult::RoomExpired);
+      return Ok(TakeSeatOutcome::RoomExpired);
     }
 
     // Check if user is in the room
@@ -378,20 +411,20 @@ impl RoomManager {
 
     // Must be standing by to take a seat
     if participant.is_sitting() {
-      return Ok(TakeSeatResult::NotStandingBy);
+      return Ok(TakeSeatOutcome::NotStandingBy);
     }
 
     // Validate seat number is within max_players range
     let max_seat = (room.max_players().value() - 1) as u8;
     if seat.value() > max_seat {
-      return Ok(TakeSeatResult::SeatOutOfRange);
+      return Ok(TakeSeatOutcome::SeatOutOfRange);
     }
 
     // Check if seat is already taken
     if let Some(existing) = self.room_repository.get_participant_by_seat(room_id, seat).await?
       && existing.user_id() != user_id
     {
-      return Ok(TakeSeatResult::SeatOccupied);
+      return Ok(TakeSeatOutcome::SeatOccupied);
     }
 
     // Check if room is full (only count sitting participants)
@@ -406,11 +439,11 @@ impl RoomManager {
       .update_participant_seat(room_id, user_id, Some(seat))
       .await?;
 
-    Ok(TakeSeatResult::Success)
+    Ok(TakeSeatOutcome::Success)
   }
 
   /// Stand up from seat (become standing by)
-  pub async fn stand_up(&self, room_id: RoomId, user_id: UserId) -> Result<StandUpResult, RoomError> {
+  pub async fn stand_up(&self, room_id: RoomId, user_id: UserId) -> Result<StandUpOutcome, RoomError> {
     // Check if room exists and is not expired
     let _room = self
       .room_repository
@@ -421,18 +454,18 @@ impl RoomManager {
     // Check if user is in the room
     let participant = match self.room_repository.get_participant(room_id, user_id).await? {
       Some(p) => p,
-      None => return Ok(StandUpResult::NotInRoom),
+      None => return Ok(StandUpOutcome::NotInRoom),
     };
 
     // If already standing, return AlreadyStanding
     if participant.is_standing_by() {
-      return Ok(StandUpResult::AlreadyStanding);
+      return Ok(StandUpOutcome::AlreadyStanding);
     }
 
     // Stand up (set seat to None, viewing to None)
     self.room_repository.stand_up_participant(room_id, user_id).await?;
 
-    Ok(StandUpResult::Success)
+    Ok(StandUpOutcome::Success)
   }
 
   /// View behind a seat (must be standing by)
@@ -548,7 +581,7 @@ impl RoomManager {
 
     // Try to take the seat
     match self.take_seat(room_id, user_id, random_seat).await? {
-      TakeSeatResult::Success => Ok(Some(random_seat)),
+      TakeSeatOutcome::Success => Ok(Some(random_seat)),
       _ => Ok(None), // Seat was taken between checking and attempting (race condition)
     }
   }

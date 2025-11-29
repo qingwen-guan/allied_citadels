@@ -9,6 +9,20 @@ use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
 use crate::domain::{Room, RoomManager, RoomParticipant, RoomRepository};
 use crate::error::RoomError;
 
+/// Detailed room information for listing
+#[derive(Debug, Clone)]
+pub struct RoomDetails {
+  pub id: String,
+  pub number: u32,
+  pub name: String,
+  pub creator_id: String,
+  pub creator_name: String,
+  pub max_players: usize,
+  pub seated_players: usize,
+  pub created_at: chrono::DateTime<chrono::Utc>,
+  pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
 pub struct RoomService {
   room_manager: RoomManager,
 }
@@ -88,12 +102,41 @@ impl RoomService {
 
   /// List all active (non-expired) rooms with optional pagination
   #[instrument(skip(self))]
-  pub async fn list_active_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
+  pub async fn list_active_rooms(&self, offset: Option<usize>, limit: Option<usize>) -> Result<Vec<Room>, RoomError> {
+    let pagination = Pagination::from_options(limit, offset);
     let result = self.room_manager.list_active_rooms(pagination).await;
     if let Err(ref e) = result {
       error!("Error listing active rooms: {:?}", e);
     }
     result
+  }
+
+  /// List all active (non-expired) rooms with detailed information
+  #[instrument(skip(self))]
+  pub async fn list_active_rooms_detailed(
+    &self, offset: Option<usize>, limit: Option<usize>,
+  ) -> Result<Vec<RoomDetails>, RoomError> {
+    let pagination = Pagination::from_options(limit, offset);
+    let result = self.room_manager.list_active_rooms_info(pagination).await;
+    if let Err(ref e) = result {
+      error!("Error listing active rooms with detailed information: {:?}", e);
+    }
+    Ok(
+      result?
+        .into_iter()
+        .map(|room_info| RoomDetails {
+          id: room_info.room.id().to_string(),
+          number: room_info.room.number().value(),
+          name: room_info.room.name().as_str().to_string(),
+          creator_id: room_info.room.creator().to_string(),
+          creator_name: room_info.creator_name,
+          max_players: room_info.room.max_players().value(),
+          seated_players: room_info.seated_players,
+          created_at: room_info.room.created_at(),
+          expires_at: room_info.room.expires_at(),
+        })
+        .collect(),
+    )
   }
 
   /// Update room name
@@ -141,13 +184,13 @@ impl RoomService {
   pub async fn enter_room(&self, room_id: RoomId, user_id: UserId) -> Result<(), RoomError> {
     let result = self.room_manager.enter_room_standing_by(user_id, room_id).await;
     match &result {
-      Ok(crate::domain::EnterRoomResult::Success) => {
+      Ok(crate::domain::EnterRoomOutcome::Success) => {
         info!("User {} entered room {} and is standing by", user_id, room_id);
       },
-      Ok(crate::domain::EnterRoomResult::AlreadyInRoom) => {
+      Ok(crate::domain::EnterRoomOutcome::AlreadyInRoom) => {
         info!("User {} is already in room {}", user_id, room_id);
       },
-      Ok(crate::domain::EnterRoomResult::RoomExpired) => {
+      Ok(crate::domain::EnterRoomOutcome::RoomExpired) => {
         return Err(RoomError::InvalidOperation("Room has expired".to_string()));
       },
       Err(e) => error!("Failed to enter room {} for user {}: {:?}", room_id, user_id, e),
@@ -202,7 +245,7 @@ impl RoomService {
   #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id, seat = new_seat.value()))]
   pub async fn change_seat(&self, room_id: RoomId, user_id: UserId, new_seat: SeatNumber) -> Result<bool, RoomError> {
     match self.room_manager.change_seat(room_id, user_id, new_seat).await {
-      Ok(crate::domain::ChangeSeatResult::Success) => {
+      Ok(crate::domain::ChangeSeatOutcome::Success) => {
         info!(
           "User {} changed to seat {} in room {}",
           user_id,
@@ -211,7 +254,7 @@ impl RoomService {
         );
         Ok(true)
       },
-      Ok(crate::domain::ChangeSeatResult::AlreadyInSeat) => {
+      Ok(crate::domain::ChangeSeatOutcome::AlreadyInSeat) => {
         info!(
           "User {} is already in seat {} in room {}",
           user_id,
@@ -220,7 +263,7 @@ impl RoomService {
         );
         Ok(true)
       },
-      Ok(crate::domain::ChangeSeatResult::SeatOccupied) => {
+      Ok(crate::domain::ChangeSeatOutcome::SeatOccupied) => {
         info!(
           "User {} tried to change to seat {} in room {} but seat is occupied",
           user_id,
@@ -229,7 +272,7 @@ impl RoomService {
         );
         Ok(false)
       },
-      Ok(crate::domain::ChangeSeatResult::SeatOutOfRange) => Err(RoomError::InvalidOperation(format!(
+      Ok(crate::domain::ChangeSeatOutcome::SeatOutOfRange) => Err(RoomError::InvalidOperation(format!(
         "Seat number {} is out of range",
         new_seat.value()
       ))),
@@ -247,15 +290,15 @@ impl RoomService {
   #[instrument(skip(self), fields(room_id = %room_id, user_id = %user_id))]
   pub async fn stand_up(&self, room_id: RoomId, user_id: UserId) -> Result<(), RoomError> {
     match self.room_manager.stand_up(room_id, user_id).await {
-      Ok(crate::domain::StandUpResult::Success) => {
+      Ok(crate::domain::StandUpOutcome::Success) => {
         info!("User {} stood up in room {}", user_id, room_id);
         Ok(())
       },
-      Ok(crate::domain::StandUpResult::AlreadyStanding) => {
+      Ok(crate::domain::StandUpOutcome::AlreadyStanding) => {
         info!("User {} is already standing in room {}", user_id, room_id);
         Ok(())
       },
-      Ok(crate::domain::StandUpResult::NotInRoom) => {
+      Ok(crate::domain::StandUpOutcome::NotInRoom) => {
         Err(RoomError::InvalidOperation("User is not in this room".to_string()))
       },
       Err(e) => {

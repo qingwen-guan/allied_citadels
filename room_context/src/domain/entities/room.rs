@@ -16,7 +16,7 @@ pub struct RoomWithStandByLimitParams {
   pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Room {
   id: RoomId,
   number: RoomNumber,
