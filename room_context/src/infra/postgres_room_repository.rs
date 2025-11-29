@@ -1,5 +1,5 @@
 use sqlx::PgPool;
-use user_context::UserId;
+use user_context::domain::valueobjects::UserId;
 
 use common_context::domain::valueobjects::Pagination;
 

@@ -1,5 +1,5 @@
 use sqlx::Row;
-use user_context::UserId;
+use user_context::domain::valueobjects::UserId;
 
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
 

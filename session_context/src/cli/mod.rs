@@ -50,6 +50,14 @@ pub enum RoomCommand {
     /// Room ID (UUID)
     room_id: String,
   },
+  /// Enter a room and take a random available seat
+  #[command(name = "enter-and-take-random-seat")]
+  EnterAndTakeRandomSeat {
+    /// Session ID of the user entering the room
+    session_id: String,
+    /// Room ID (UUID)
+    room_id: String,
+  },
 }
 
 pub async fn handle_command(

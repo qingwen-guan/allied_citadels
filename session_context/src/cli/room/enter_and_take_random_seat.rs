@@ -10,17 +10,28 @@ pub async fn execute(
     .await?
     .ok_or_else(|| format!("Session not found: {}", session_id_str))?;
 
-  // Enter the room (room_service will parse the IDs)
-  match room_service.enter_room(&session_info.user_id, &room_id_str).await? {
-    room_service::EnterRoomOutcome::Success => {
+  // Enter the room and take a random seat
+  match room_service
+    .enter_room_and_take_random_seat(&session_info.user_id, &room_id_str)
+    .await?
+  {
+    room_service::EnterRoomRandomSeatOutcome::Success(seat_number) => {
       println!(
-        "User {} entered room {} and is standing by",
+        "User {} entered room {} and took seat {}",
+        session_info.user_id,
+        room_id_str,
+        seat_number.value()
+      );
+    },
+    room_service::EnterRoomRandomSeatOutcome::AlreadyInRoom => {
+      println!(
+        "User {} is already in room {} - no action required",
         session_info.user_id, room_id_str
       );
     },
-    room_service::EnterRoomOutcome::AlreadyInRoom => {
+    room_service::EnterRoomRandomSeatOutcome::NoSeatsAvailable => {
       println!(
-        "User {} is already in room {} - no action required",
+        "User {} entered room {} but no seats are available",
         session_info.user_id, room_id_str
       );
     },

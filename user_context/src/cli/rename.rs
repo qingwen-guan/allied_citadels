@@ -3,9 +3,7 @@ use user_context::UserService;
 pub async fn execute(
   user_service: UserService, uuid_or_nickname: String, new_nickname: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-  let result = user_service
-    .rename_user(&uuid_or_nickname, &new_nickname)
-    .await?;
+  let result = user_service.rename_user(&uuid_or_nickname, &new_nickname).await?;
 
   match result {
     Some(info) => {
@@ -21,4 +19,3 @@ pub async fn execute(
 
   Ok(())
 }
-

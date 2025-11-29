@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use common_context::domain::valueobjects::Pagination;
-use user_context::UserId;
+use user_context::domain::valueobjects::UserId;
 
 use crate::domain::entities::{Room, RoomParticipant};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};

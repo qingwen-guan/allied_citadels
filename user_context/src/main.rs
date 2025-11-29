@@ -12,9 +12,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
-use user_context::{
-  Config, PostgresSessionRepository, PostgresUserRepository, Salt, UserError, UserFactory, UserService,
-};
+use user_context::UserService;
+use user_context::domain::valueobjects::Salt;
+use user_context::infra::{PostgresSessionRepository, PostgresUserRepository};
+use user_context::{Config, UserError, UserFactory};
 
 #[derive(Serialize)]
 struct UserResponse {

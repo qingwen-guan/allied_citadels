@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use user_context::UserId;
+use user_context::domain::valueobjects::UserId;
 
 use crate::domain::entities::RoomToUserRawMessage;
 use crate::domain::valueobjects::{MessageTopic, RoomId, RoomToUserMessageId};

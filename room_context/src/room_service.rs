@@ -1,5 +1,6 @@
 use tracing::{error, info, instrument};
-use user_context::{UserId, UserRepository};
+use user_context::UserRepository;
+use user_context::domain::valueobjects::UserId;
 use uuid::Uuid;
 
 use common_context::domain::valueobjects::Pagination;
@@ -9,13 +10,24 @@ use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
 use crate::domain::{Room, RoomManager, RoomParticipant, RoomRepository};
 use crate::error::RoomError;
 
-/// Result of entering a room
+/// Outcome of entering a room
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EnterRoomResult {
+pub enum EnterRoomOutcome {
   /// User successfully entered the room
   Success,
   /// User was already in the room
   AlreadyInRoom,
+}
+
+/// Outcome of entering a room and taking a random seat
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnterRoomRandomSeatOutcome {
+  /// User successfully entered the room and took a seat
+  Success(SeatNumber),
+  /// User was already in the room
+  AlreadyInRoom,
+  /// No seats available in the room
+  NoSeatsAvailable,
 }
 
 /// Detailed room information for listing
@@ -190,7 +202,7 @@ impl RoomService {
 
   /// Enter a room (always enters standing by, use change_seat to take a seat)
   #[instrument(skip(self), fields(user_id = user_id_str, room_id = room_id_str))]
-  pub async fn enter_room(&self, user_id_str: &str, room_id_str: &str) -> Result<EnterRoomResult, RoomError> {
+  pub async fn enter_room(&self, user_id_str: &str, room_id_str: &str) -> Result<EnterRoomOutcome, RoomError> {
     // Parse user_id from string
     let user_id = user_id_str
       .parse::<UserId>()
@@ -204,11 +216,11 @@ impl RoomService {
     match self.room_manager.enter_room_standing_by(user_id, room_id).await {
       Ok(crate::domain::EnterRoomOutcome::Success) => {
         info!("User {} entered room {} and is standing by", user_id, room_id);
-        Ok(EnterRoomResult::Success)
+        Ok(EnterRoomOutcome::Success)
       },
       Ok(crate::domain::EnterRoomOutcome::AlreadyInRoom) => {
         info!("User {} is already in room {}", user_id, room_id);
-        Ok(EnterRoomResult::AlreadyInRoom)
+        Ok(EnterRoomOutcome::AlreadyInRoom)
       },
       Ok(crate::domain::EnterRoomOutcome::RoomExpired) => {
         Err(RoomError::InvalidOperation("Room has expired".to_string()))
@@ -221,10 +233,26 @@ impl RoomService {
   }
 
   /// Enter a room and take a random available seat
-  #[instrument(skip(self), fields(user_id = %user_id, room_id = %room_id))]
+  #[instrument(skip(self), fields(user_id = user_id_str, room_id = room_id_str))]
   pub async fn enter_room_and_take_random_seat(
-    &self, user_id: UserId, room_id: RoomId,
-  ) -> Result<Option<SeatNumber>, RoomError> {
+    &self, user_id_str: &str, room_id_str: &str,
+  ) -> Result<EnterRoomRandomSeatOutcome, RoomError> {
+    // Parse user_id from string
+    let user_id = user_id_str
+      .parse::<UserId>()
+      .map_err(|e| RoomError::InvalidOperation(format!("Invalid user_id: {} ({})", user_id_str, e)))?;
+
+    // Parse room_id from string
+    let room_id = room_id_str
+      .parse::<RoomId>()
+      .map_err(|e| RoomError::InvalidOperation(format!("Invalid room_id: {} ({})", room_id_str, e)))?;
+
+    // Check if user is already in the room
+    if let Some(_participant) = self.room_manager.get_participant(room_id, user_id).await? {
+      info!("User {} is already in room {}", user_id, room_id);
+      return Ok(EnterRoomRandomSeatOutcome::AlreadyInRoom);
+    }
+
     let seat = self
       .room_manager
       .enter_room_and_take_random_seat(user_id, room_id)
@@ -237,12 +265,13 @@ impl RoomService {
           room_id,
           seat_num.value()
         );
+        Ok(EnterRoomRandomSeatOutcome::Success(seat_num))
       },
       None => {
         info!("User {} entered room {} but no seats available", user_id, room_id);
+        Ok(EnterRoomRandomSeatOutcome::NoSeatsAvailable)
       },
     }
-    Ok(seat)
   }
 
   /// Take a random available seat in a room

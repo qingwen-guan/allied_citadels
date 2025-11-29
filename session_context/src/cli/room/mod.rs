@@ -1,5 +1,6 @@
 mod create;
 mod enter;
+mod enter_and_take_random_seat;
 mod list;
 
 use room_context::RoomService;
@@ -21,6 +22,11 @@ pub async fn handle_room_command(
       name,
       max_players,
     } => create::execute(user_service, room_service, session_id, name, max_players).await,
-    RoomCommand::Enter { session_id, room_id } => enter::execute(user_service, room_service, session_id, room_id).await,
+    RoomCommand::Enter { session_id, room_id } => {
+      enter::execute(user_service, room_service, session_id, room_id).await
+    },
+    RoomCommand::EnterAndTakeRandomSeat { session_id, room_id } => {
+      enter_and_take_random_seat::execute(user_service, room_service, session_id, room_id).await
+    },
   }
 }

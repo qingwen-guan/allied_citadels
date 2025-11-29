@@ -12,7 +12,7 @@ use room_context::{Config, PostgresMessageRepository, PostgresRoomRepository, Ro
 use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
-use user_context::PostgresUserRepository;
+use user_context::infra::PostgresUserRepository;
 use uuid::Uuid;
 
 #[derive(Serialize)]

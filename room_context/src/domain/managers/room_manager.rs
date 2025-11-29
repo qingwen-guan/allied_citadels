@@ -1,4 +1,5 @@
-use user_context::{UserId, UserRepository};
+use user_context::UserRepository;
+use user_context::domain::valueobjects::UserId;
 
 use crate::domain::entities::{Room, RoomParticipant, RoomToUserMessage, RoomToUserMessageDetails};
 use crate::domain::managers::MessageManager;
