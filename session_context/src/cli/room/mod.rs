@@ -1,3 +1,4 @@
+mod create;
 mod list;
 
 use room_context::RoomService;
@@ -10,5 +11,10 @@ pub async fn handle_room_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
   match command {
     RoomCommand::List { session_id } => list::execute(user_service, room_service, session_id).await,
+    RoomCommand::Create {
+      session_id,
+      name,
+      max_players,
+    } => create::execute(user_service, room_service, session_id, name, max_players).await,
   }
 }

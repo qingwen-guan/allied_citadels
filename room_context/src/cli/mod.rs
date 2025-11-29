@@ -1,8 +1,7 @@
 mod list;
 
 use clap::{Parser, Subcommand};
-use room_context::{MaxPlayers, RoomId, RoomService};
-use user_context::UserId;
+use room_context::{RoomId, RoomService};
 
 #[derive(Parser)]
 pub struct Cli {
@@ -87,10 +86,7 @@ async fn handle_room_command(
       creator,
       max_players,
     } => {
-      let creator_uuid = creator.parse::<uuid::Uuid>()?;
-      let creator_id = UserId::from(creator_uuid);
-      let max_players = MaxPlayers::try_from(max_players)?;
-      let room = room_service.create_room(&name, creator_id, max_players).await?;
+      let room = room_service.create_room(&name, &creator, max_players).await?;
       println!(
         "Room created: uuid={}, number={}, name={}, creator={}, max_players={}",
         room.id(),
@@ -122,9 +118,7 @@ async fn handle_room_command(
       Ok(())
     },
     RoomCommand::GetByUuid { uuid } => {
-      let uuid = uuid.parse::<uuid::Uuid>()?;
-      let room_id = RoomId::from(uuid);
-      match room_service.get_room_by_id(room_id).await? {
+      match room_service.get_room_by_id(&uuid).await? {
         Some(room) => {
           let created_at_local = room.created_at().with_timezone(&chrono::Local);
           println!(

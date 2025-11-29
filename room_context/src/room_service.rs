@@ -1,5 +1,6 @@
 use tracing::{error, info, instrument};
 use user_context::{UserId, UserRepository};
+use uuid::Uuid;
 
 use common_context::domain::valueobjects::Pagination;
 
@@ -28,11 +29,18 @@ impl RoomService {
 
   /// Create a new room
   #[instrument(skip(self), fields(name = name_str))]
-  pub async fn create_room(
-    &self, name_str: &str, creator: UserId, max_players: MaxPlayers,
-  ) -> Result<Room, RoomError> {
+  pub async fn create_room(&self, name_str: &str, creator: &str, max_players: usize) -> Result<Room, RoomError> {
+    // Parse creator string to UserId
+    let creator_uuid = creator
+      .parse::<Uuid>()
+      .map_err(|_| RoomError::InvalidOperation(format!("Invalid creator UUID format: {}", creator)))?;
+    let creator_id = UserId::from(creator_uuid);
+
+    // Convert max_players to MaxPlayers value object
+    let max_players = MaxPlayers::try_from(max_players).map_err(|_| RoomError::InvalidMaxPlayers)?;
+
     let name = RoomName::from(name_str);
-    let result = self.room_manager.create_room(&name, creator, max_players).await;
+    let result = self.room_manager.create_room(&name, creator_id, max_players).await;
     match &result {
       Ok(_) => info!("Successfully created room: {}", name_str),
       Err(e) => error!("Failed to create room {}: {:?}", name_str, e),
@@ -41,11 +49,17 @@ impl RoomService {
   }
 
   /// Get room by ID
-  #[instrument(skip(self), fields(id = %id))]
-  pub async fn get_room_by_id(&self, id: RoomId) -> Result<Option<Room>, RoomError> {
-    let result = self.room_manager.get_room_by_id(id).await;
+  #[instrument(skip(self), fields(id = id_str))]
+  pub async fn get_room_by_id(&self, id_str: &str) -> Result<Option<Room>, RoomError> {
+    // Parse string to UUID
+    let uuid = id_str
+      .parse::<Uuid>()
+      .map_err(|_| RoomError::InvalidOperation(format!("Invalid room UUID format: {}", id_str)))?;
+    let room_id = RoomId::from(uuid);
+
+    let result = self.room_manager.get_room_by_id(room_id).await;
     if let Err(e) = &result {
-      error!("Error getting room by ID {}: {:?}", id, e);
+      error!("Error getting room by ID {}: {:?}", id_str, e);
     }
     result
   }
@@ -63,7 +77,8 @@ impl RoomService {
 
   /// List all rooms with optional pagination
   #[instrument(skip(self))]
-  pub async fn list_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
+  pub async fn list_rooms(&self, offset: Option<usize>, limit: Option<usize>) -> Result<Vec<Room>, RoomError> {
+    let pagination = Pagination::from_options(limit, offset);
     let result = self.room_manager.list_rooms(pagination).await;
     if let Err(ref e) = result {
       error!("Error listing rooms: {:?}", e);

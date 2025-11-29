@@ -43,8 +43,7 @@ impl RoomRepository for PostgresRoomRepository {
     Ok(rooms)
   }
 
-  async fn find_all(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
-    let pagination = pagination.unwrap_or_default();
+  async fn find_all(&self, pagination: Pagination) -> Result<Vec<Room>, RoomError> {
     let rooms = sqlx::query_as::<_, Room>(
       "SELECT id, room_number, room_name, creator, max_players, created_at, expires_at FROM room ORDER BY created_at DESC LIMIT $1 OFFSET $2",
     )
@@ -56,8 +55,7 @@ impl RoomRepository for PostgresRoomRepository {
     Ok(rooms)
   }
 
-  async fn find_active(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
-    let pagination = pagination.unwrap_or_default();
+  async fn find_active(&self, pagination: Pagination) -> Result<Vec<Room>, RoomError> {
     let rooms = sqlx::query_as::<_, Room>(
       "SELECT id, room_number, room_name, creator, max_players, created_at, expires_at FROM room WHERE expires_at > NOW() ORDER BY created_at DESC LIMIT $1 OFFSET $2",
     )

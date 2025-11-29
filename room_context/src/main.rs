@@ -8,9 +8,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, put};
 use clap::Parser;
-use room_context::{
-  Config, MaxPlayers, PostgresMessageRepository, PostgresRoomRepository, RoomError, RoomId, RoomService, UserId,
-};
+use room_context::{Config, PostgresMessageRepository, PostgresRoomRepository, RoomError, RoomId, RoomService};
 use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
@@ -133,7 +131,9 @@ fn create_router(room_service: Arc<RoomService>) -> Router {
 }
 
 async fn list_rooms(State(service): State<Arc<RoomService>>) -> Result<Json<Vec<RoomResponse>>, AppError> {
-  let rooms = service.list_rooms(None).await?;
+  let offset = None;
+  let limit = None;
+  let rooms = service.list_rooms(offset, limit).await?;
   let response: Vec<RoomResponse> = rooms
     .into_iter()
     .map(|room| RoomResponse {
@@ -151,9 +151,7 @@ async fn list_rooms(State(service): State<Arc<RoomService>>) -> Result<Json<Vec<
 async fn get_room(
   State(service): State<Arc<RoomService>>, axum::extract::Path(uuid): axum::extract::Path<String>,
 ) -> Result<Json<RoomResponse>, AppError> {
-  let uuid = uuid.parse::<Uuid>().map_err(|_| AppError::InvalidUuid)?;
-  let room_id = RoomId::from(uuid);
-  let room = service.get_room_by_id(room_id).await?;
+  let room = service.get_room_by_id(&uuid).await?;
   let room = room.ok_or(AppError::NotFound)?;
   Ok(Json(RoomResponse {
     uuid: room.id().to_string(),
@@ -168,11 +166,10 @@ async fn get_room(
 async fn create_room(
   State(service): State<Arc<RoomService>>, Json(payload): Json<CreateRoomRequest>,
 ) -> Result<Json<RoomResponse>, AppError> {
-  let creator_uuid = payload.creator.parse::<Uuid>().map_err(|_| AppError::InvalidUuid)?;
-  let creator = UserId::from(creator_uuid);
-  let max_players =
-    MaxPlayers::try_from(payload.max_players).map_err(|_| AppError::Room(RoomError::InvalidMaxPlayers))?;
-  let room = service.create_room(&payload.name, creator, max_players).await?;
+  let room = service
+    .create_room(&payload.name, &payload.creator, payload.max_players)
+    .await
+    .map_err(AppError::Room)?;
   Ok(Json(RoomResponse {
     uuid: room.id().to_string(),
     number: room.number().value(),

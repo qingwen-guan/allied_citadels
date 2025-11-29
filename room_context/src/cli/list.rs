@@ -1,7 +1,9 @@
 use room_context::RoomService;
 
 pub async fn execute(room_service: RoomService) -> Result<(), Box<dyn std::error::Error>> {
-  let rooms = room_service.list_rooms(None).await?;
+  let offset = None;
+  let limit = None;
+  let rooms = room_service.list_rooms(offset, limit).await?;
 
   if rooms.is_empty() {
     println!("No rooms found.");

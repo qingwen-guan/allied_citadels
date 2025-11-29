@@ -131,13 +131,14 @@ impl RoomManager {
     Ok(rooms.into_iter().next())
   }
 
-  /// List all rooms with optional pagination
-  pub async fn list_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
+  /// List all rooms with pagination
+  pub async fn list_rooms(&self, pagination: Pagination) -> Result<Vec<Room>, RoomError> {
     self.room_repository.find_all(pagination).await
   }
 
   /// List all active (non-expired) rooms with optional pagination
-  pub async fn list_active_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> {
+  pub async fn list_active_rooms(&self, pagination: Option<Pagination>) -> Result<Vec<Room>, RoomError> { // TODO: make pagination required
+    let pagination = pagination.unwrap_or_default();
     self.room_repository.find_active(pagination).await
   }
 

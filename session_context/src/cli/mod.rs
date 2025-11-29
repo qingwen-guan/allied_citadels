@@ -26,6 +26,15 @@ pub enum Command {
 pub enum RoomCommand {
   /// List all active (non-expired) rooms
   List { session_id: String },
+  /// Create a new room
+  Create {
+    /// Session ID of the user creating the room
+    session_id: String,
+    /// Room name
+    name: String,
+    /// Maximum number of players (4 or 6)
+    max_players: usize,
+  },
 }
 
 pub async fn handle_command(
