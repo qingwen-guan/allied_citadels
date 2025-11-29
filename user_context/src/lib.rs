@@ -3,7 +3,7 @@ pub mod domain;
 mod error;
 pub mod infra;
 pub mod migrations;
-pub mod user_service;
+pub mod services;
 
 pub use config::Config;
 pub use domain::{
@@ -11,4 +11,3 @@ pub use domain::{
   UserToUserMessageDetails, UserToUserRawMessage,
 };
 pub use error::UserError;
-pub use user_service::UserService;

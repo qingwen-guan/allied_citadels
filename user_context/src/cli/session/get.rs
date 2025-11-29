@@ -1,5 +1,5 @@
 use chrono::Local;
-use user_context::UserService;
+use user_context::services::UserService;
 
 pub async fn execute(user_service: UserService, session_id_str: String) -> Result<(), Box<dyn std::error::Error>> {
   match user_service.get_session(&session_id_str).await? {

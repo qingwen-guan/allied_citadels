@@ -1,7 +1,7 @@
 use chrono::Local;
 use std::collections::HashMap;
 
-use user_context::UserService;
+use user_context::services::UserService;
 
 struct SessionWithExpiry {
   session_id: String,

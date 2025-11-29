@@ -3,7 +3,7 @@ mod room;
 
 use clap::{Parser, Subcommand};
 use room_context::RoomService;
-use user_context::UserService;
+use user_context::services::UserService;
 
 #[derive(Parser)]
 pub struct Cli {

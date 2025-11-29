@@ -1,5 +1,5 @@
 use room_context::{RoomService, room_service};
-use user_context::UserService;
+use user_context::services::UserService;
 
 pub async fn execute(
   user_service: UserService, room_service: RoomService, session_id_str: String, room_id_str: String,

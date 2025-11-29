@@ -4,9 +4,9 @@ use clap::Parser;
 use common_context::database::create_db_pool;
 use room_context::{Config as RoomConfig, PostgresMessageRepository, PostgresRoomRepository, RoomService};
 use sqlx::postgres::PgPoolOptions;
-use user_context::UserService;
 use user_context::domain::valueobjects::Salt;
 use user_context::infra::{PostgresSessionRepository, PostgresUserRepository};
+use user_context::services::UserService;
 use user_context::{Config, UserError, UserFactory};
 
 async fn create_pool(config: &Config) -> Result<sqlx::PgPool, UserError> {

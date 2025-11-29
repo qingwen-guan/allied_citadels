@@ -6,7 +6,6 @@
 //! should only be used internally and converted at the boundary.
 
 use tracing::{error, info, instrument};
-use uuid::Uuid;
 
 use crate::config::Config;
 use crate::domain::valueobjects::{SessionId, UserId};
@@ -28,9 +27,9 @@ pub struct CreateUserResponse {
   pub password: String,
 }
 
-/// Result of resetting a password
+/// Response for resetting a password
 #[allow(dead_code)]
-pub struct ResetPasswordResult {
+pub struct ResetPasswordResponse {
   pub user_id: String,
   pub nickname: Option<String>,
   pub password: String,
@@ -265,15 +264,15 @@ impl UserService {
     })
   }
 
-  /// Delete user by User UUID
-  /// NOTE: Takes Uuid and converts to UserId internally to keep domain types inside
-  #[instrument(skip(self), fields(user_id = %user_uuid))]
-  pub async fn delete_user(&self, user_uuid: Uuid) -> Result<(), UserError> {
-    let user_id = UserId::from(user_uuid);
+  /// Delete user by user_id (UUID string)
+  /// NOTE: Takes String instead of UserId per service layer rules
+  #[instrument(skip(self), fields(user_id = user_id_str))]
+  pub async fn delete_user(&self, user_id_str: &str) -> Result<(), UserError> {
+    let user_id = parse_user_id(user_id_str)?;
     let result = self.user_manager.delete_user(user_id).await;
     match &result {
-      Ok(_) => info!("Successfully deleted user: {}", user_id),
-      Err(e) => error!("Failed to delete user {}: {:?}", user_id, e),
+      Ok(_) => info!("Successfully deleted user: {}", user_id_str),
+      Err(e) => error!("Failed to delete user {}: {:?}", user_id_str, e),
     }
     result
   }
@@ -379,17 +378,15 @@ impl UserService {
 // Domain types should never leak into the public API
 
 fn parse_user_id(user_id_str: &str) -> Result<UserId, UserError> {
-  let uuid = user_id_str
-    .parse::<Uuid>()
-    .map_err(|_| UserError::InvalidOperation(format!("Invalid user_id format: {}", user_id_str)))?;
-  Ok(UserId::from(uuid))
+  user_id_str
+    .parse::<UserId>()
+    .map_err(|_| UserError::InvalidOperation(format!("Invalid user_id format: {}", user_id_str)))
 }
 
 fn parse_session_id(session_id_str: &str) -> Result<SessionId, UserError> {
-  let uuid = session_id_str
-    .parse::<Uuid>()
-    .map_err(|_| UserError::InvalidOperation(format!("Invalid session_id format: {}", session_id_str)))?;
-  Ok(SessionId::from(uuid))
+  session_id_str
+    .parse::<SessionId>()
+    .map_err(|_| UserError::InvalidOperation(format!("Invalid session_id format: {}", session_id_str)))
 }
 
 fn convert_session_info(info: SessionInfo) -> SessionInfoResponse {

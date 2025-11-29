@@ -7,7 +7,7 @@ mod reset_password;
 mod session;
 
 use clap::{Parser, Subcommand};
-use user_context::UserService;
+use user_context::services::UserService;
 
 #[derive(Parser)]
 pub struct Cli {

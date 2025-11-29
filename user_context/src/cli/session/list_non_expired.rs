@@ -1,5 +1,5 @@
 use chrono::Local;
-use user_context::UserService;
+use user_context::services::UserService;
 
 pub async fn execute(user_service: UserService) -> Result<(), Box<dyn std::error::Error>> {
   let sessions = user_service.list_active_sessions().await?;

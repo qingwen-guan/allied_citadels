@@ -1,4 +1,4 @@
-use user_context::UserService;
+use user_context::services::UserService;
 
 pub async fn execute(user_service: UserService, uuid_or_nickname: String) -> Result<(), Box<dyn std::error::Error>> {
   // Try to parse as UUID first
