@@ -111,7 +111,7 @@ impl Room {
 
   /// Validate if a seat number is valid for this room's max_players
   pub fn is_valid_seat_number(&self, seat_number: SeatNumber) -> bool {
-    let max_seat = (self.max_players.value() - 1) as u8;
+    let max_seat = self.max_players.value() - 1;
     seat_number.value() <= max_seat
   }
 }

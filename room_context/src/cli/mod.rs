@@ -1,7 +1,7 @@
 mod list;
 
 use clap::{Parser, Subcommand};
-use room_context::{RoomId, RoomService};
+use room_context::services::RoomService;
 
 #[derive(Parser)]
 pub struct Cli {
@@ -138,22 +138,17 @@ async fn handle_room_command(
       Ok(())
     },
     RoomCommand::Delete { uuid } => {
-      let uuid = uuid.parse::<uuid::Uuid>()?;
-      let room_id = RoomId::from(uuid);
-      room_service.delete_room(room_id).await?;
+      room_service.delete_room(&uuid).await?;
       println!("Deleted room with UUID: {}", uuid);
       Ok(())
     },
     RoomCommand::UpdateName { uuid, new_name } => {
-      let uuid = uuid.parse::<uuid::Uuid>()?;
-      room_service.update_room_name(uuid, &new_name).await?;
+      room_service.update_room_name(&uuid, &new_name).await?;
       println!("Updated room name for UUID: {}", uuid);
       Ok(())
     },
     RoomCommand::UpdateMaxPlayers { uuid, max_players } => {
-      let uuid = uuid.parse::<uuid::Uuid>()?;
-      let room_id = RoomId::from(uuid);
-      room_service.update_room_max_players(room_id, max_players).await?;
+      room_service.update_room_max_players(&uuid, max_players).await?;
       println!("Updated max players for UUID: {}", uuid);
       Ok(())
     },

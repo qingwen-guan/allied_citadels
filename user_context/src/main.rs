@@ -12,10 +12,12 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
+use user_context::domain::UserFactory;
 use user_context::domain::valueobjects::Salt;
+use user_context::domain::valueobjects::UserConfig;
+use user_context::errors::UserError;
 use user_context::infra::{PostgresSessionRepository, PostgresUserRepository};
 use user_context::services::UserService;
-use user_context::{Config, UserError, UserFactory};
 
 #[derive(Serialize)]
 struct UserResponse {
@@ -40,7 +42,7 @@ struct ErrorResponse {
   error: String,
 }
 
-async fn create_pool(config: &Config) -> Result<sqlx::PgPool, UserError> {
+async fn create_pool(config: &UserConfig) -> Result<sqlx::PgPool, UserError> {
   let pool = PgPoolOptions::new()
     .max_connections(config.max_connections)
     .min_connections(config.min_connections)
@@ -59,7 +61,7 @@ async fn create_pool(config: &Config) -> Result<sqlx::PgPool, UserError> {
   Ok(pool)
 }
 
-async fn create_user_service(config: &Config) -> Result<UserService, UserError> {
+async fn create_user_service(config: &UserConfig) -> Result<UserService, UserError> {
   let pool = create_pool(config).await?;
   let repository = Box::new(PostgresUserRepository::new(pool.clone()));
   let session_repository = Box::new(PostgresSessionRepository::new(pool));
@@ -75,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .init();
 
   let cli = cli::Cli::parse();
-  let config = Config::load()?;
+  let config = UserConfig::load()?;
 
   // Handle commands that don't need UserService
   if let cli::Command::Migrates { command } = cli.command {

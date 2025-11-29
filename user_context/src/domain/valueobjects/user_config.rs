@@ -3,10 +3,10 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use crate::error::{ConfigError, UserError};
+use crate::errors::{ConfigError, UserError};
 
 #[derive(Debug, Clone)]
-pub struct Config {
+pub struct UserConfig {
   pub dsn: String,
   pub password_salt: String,
   pub server_addr: String,
@@ -18,7 +18,7 @@ pub struct Config {
   pub session_duration_hours: u64,
 }
 
-impl Config {
+impl UserConfig {
   pub fn load() -> Result<Self, UserError> {
     let config_path = find_config_file().ok_or_else(|| {
       UserError::Config(ConfigError::FileNotFound(
@@ -76,7 +76,7 @@ impl Config {
 
     let section = config.user;
 
-    Ok(Config {
+    Ok(UserConfig {
       dsn: section.dsn,
       password_salt: section.password_salt,
       server_addr: section.server_addr,

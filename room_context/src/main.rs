@@ -8,12 +8,16 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, put};
 use clap::Parser;
-use room_context::{Config, PostgresMessageRepository, PostgresRoomRepository, RoomError, RoomId, RoomService};
+use room_context::domain::factories::RoomConfigFactory;
+use room_context::domain::valueobjects::RoomConfig;
+use room_context::errors::RoomError;
+use room_context::infra::{PostgresMessageRepository, PostgresRoomRepository};
+use room_context::migrations;
+use room_context::services::RoomService;
 use serde::{Deserialize, Serialize};
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
 use user_context::infra::PostgresUserRepository;
-use uuid::Uuid;
 
 #[derive(Serialize)]
 struct RoomResponse {
@@ -47,13 +51,13 @@ struct ErrorResponse {
   error: String,
 }
 
-async fn create_pool(config: &Config) -> Result<sqlx::PgPool, RoomError> {
+async fn create_pool(config: &RoomConfig) -> Result<sqlx::PgPool, RoomError> {
   common_context::database::create_db_pool(&config.db)
     .await
     .map_err(RoomError::Database)
 }
 
-async fn create_room_service(config: &Config) -> Result<RoomService, RoomError> {
+async fn create_room_service(config: &RoomConfig) -> Result<RoomService, RoomError> {
   let pool = create_pool(config).await?;
   let room_repository = Box::new(PostgresRoomRepository::new(pool.clone()));
   let user_repository = Box::new(PostgresUserRepository::new(pool.clone()));
@@ -72,22 +76,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   // Handle commands that don't need RoomService
   if let cli::Command::Migrates { command } = &cli.command {
-    let config = Config::load()?;
+    let config = RoomConfigFactory::new().load()?;
     match command {
       cli::MigrateCommand::CreateUserTable => {
         user_context::migrations::create_user_table(&config.db.dsn).await?;
       },
       cli::MigrateCommand::CreateRoomTable => {
-        room_context::create_room_table(&config.db.dsn).await?;
+        migrations::create_room_table(&config.db).await?;
       },
       cli::MigrateCommand::DropRoomTable => {
-        room_context::drop_room_table(&config.db.dsn).await?;
+        migrations::drop_room_table(&config.db).await?;
       },
       cli::MigrateCommand::CreateRoomToUserMessageTable => {
-        room_context::create_room_to_user_message_table(&config.db.dsn).await?;
+        migrations::create_room_to_user_message_table(&config.db).await?;
       },
       cli::MigrateCommand::CreateAllTables => {
-        room_context::create_all_tables(&config.db.dsn).await?;
+        migrations::create_all_tables(&config.db).await?;
       },
       cli::MigrateCommand::DropAllTables => {
         common_context::drop_all_tables(&config.db.dsn).await?;
@@ -96,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     return Ok(());
   }
 
-  let config = Config::load()?;
+  let config = RoomConfigFactory::new().load()?;
   let room_service = create_room_service(&config).await?;
 
   match cli.command {
@@ -184,8 +188,7 @@ async fn update_room_name(
   State(service): State<Arc<RoomService>>, axum::extract::Path(uuid): axum::extract::Path<String>,
   Json(payload): Json<UpdateRoomNameRequest>,
 ) -> Result<StatusCode, AppError> {
-  let uuid = uuid.parse::<Uuid>().map_err(|_| AppError::InvalidUuid)?;
-  service.update_room_name(uuid, &payload.name).await?;
+  service.update_room_name(&uuid, &payload.name).await?;
   Ok(StatusCode::NO_CONTENT)
 }
 
@@ -193,18 +196,14 @@ async fn update_room_max_players(
   State(service): State<Arc<RoomService>>, axum::extract::Path(uuid): axum::extract::Path<String>,
   Json(payload): Json<UpdateRoomMaxPlayersRequest>,
 ) -> Result<StatusCode, AppError> {
-  let uuid = uuid.parse::<Uuid>().map_err(|_| AppError::InvalidUuid)?;
-  let room_id = RoomId::from(uuid);
-  service.update_room_max_players(room_id, payload.max_players).await?;
+  service.update_room_max_players(&uuid, payload.max_players).await?;
   Ok(StatusCode::NO_CONTENT)
 }
 
 async fn delete_room(
   State(service): State<Arc<RoomService>>, axum::extract::Path(uuid): axum::extract::Path<String>,
 ) -> Result<StatusCode, AppError> {
-  let uuid = uuid.parse::<Uuid>().map_err(|_| AppError::InvalidUuid)?;
-  let room_id = RoomId::from(uuid);
-  service.delete_room(room_id).await?;
+  service.delete_room(&uuid).await.map_err(AppError::Room)?;
   Ok(StatusCode::NO_CONTENT)
 }
 
@@ -213,7 +212,6 @@ enum AppError {
   Room(RoomError),
   NotFound,
   Conflict,
-  InvalidUuid,
 }
 
 impl From<RoomError> for AppError {
@@ -240,13 +238,6 @@ impl IntoResponse for AppError {
         StatusCode::CONFLICT,
         Json(ErrorResponse {
           error: "Room name already exists".to_string(),
-        }),
-      )
-        .into_response(),
-      AppError::InvalidUuid => (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-          error: "Invalid UUID format".to_string(),
         }),
       )
         .into_response(),

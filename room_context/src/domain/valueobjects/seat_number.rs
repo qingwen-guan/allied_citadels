@@ -1,13 +1,13 @@
 use std::fmt;
 
-use crate::error::RoomError;
+use crate::errors::RoomError;
 
 /// SeatNumber - value object for seat position in a room (0-based index)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct SeatNumber(u8);
+pub struct SeatNumber(usize);
 
 impl SeatNumber {
-  pub fn new(value: u8) -> Result<Self, RoomError> {
+  pub fn new(value: usize) -> Result<Self, RoomError> {
     if value > 5 {
       return Err(RoomError::InvalidOperation(
         "Seat number must be between 0 and 5".to_string(),
@@ -16,7 +16,7 @@ impl SeatNumber {
     Ok(Self(value))
   }
 
-  pub fn value(&self) -> u8 {
+  pub fn value(&self) -> usize {
     self.0
   }
 
@@ -31,13 +31,7 @@ impl fmt::Display for SeatNumber {
   }
 }
 
-impl From<u8> for SeatNumber {
-  fn from(value: u8) -> Self {
-    Self::new(value).unwrap_or(Self(0))
-  }
-}
-
-impl From<SeatNumber> for u8 {
+impl From<SeatNumber> for usize {
   fn from(value: SeatNumber) -> Self {
     value.value()
   }
@@ -56,7 +50,7 @@ impl<'q> sqlx::Encode<'q, sqlx::Postgres> for SeatNumber {
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for SeatNumber {
   fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
     let num = <i16 as sqlx::Decode<'r, sqlx::Postgres>>::decode(value)?;
-    SeatNumber::new(num as u8).map_err(|e| e.into())
+    SeatNumber::new(num as usize).map_err(|e| e.into())
   }
 }
 

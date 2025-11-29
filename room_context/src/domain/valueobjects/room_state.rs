@@ -1,7 +1,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use crate::error::RoomError;
+use crate::errors::RoomError;
 
 /// RoomState - value object representing the lifecycle status of a room
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

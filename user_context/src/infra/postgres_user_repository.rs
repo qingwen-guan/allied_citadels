@@ -2,7 +2,7 @@ use sqlx::PgPool;
 
 use crate::domain::valueobjects::UserId;
 use crate::domain::{NickName, SaltedPassword, User, UserRepository};
-use crate::error::UserError;
+use crate::errors::UserError;
 
 /// Access Control Layer - abstracts database operations to allow for future storage changes
 pub struct PostgresUserRepository {

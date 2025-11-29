@@ -2,7 +2,7 @@ mod login;
 mod room;
 
 use clap::{Parser, Subcommand};
-use room_context::RoomService;
+use room_context::services::RoomService;
 use user_context::services::UserService;
 
 #[derive(Parser)]

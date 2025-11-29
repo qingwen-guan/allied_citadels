@@ -1,4 +1,4 @@
-use user_context::UserRepository;
+use user_context::domain::UserRepository;
 use user_context::domain::valueobjects::UserId;
 
 use crate::domain::entities::{Room, RoomParticipant, RoomToUserMessage, RoomToUserMessageDetails};
@@ -7,7 +7,7 @@ use common_context::domain::valueobjects::Pagination;
 
 use crate::domain::repositories::{RawMessageRepository, RoomRepository};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
-use crate::error::RoomError;
+use crate::errors::RoomError;
 
 /// Outcome of update_room_max_players operation
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -361,7 +361,7 @@ impl RoomManager {
     }
 
     // Validate seat number is within max_players range
-    let max_seat = (room.max_players().value() - 1) as u8;
+    let max_seat = room.max_players().value() - 1;
     if new_seat.value() > max_seat {
       return Ok(ChangeSeatOutcome::SeatOutOfRange);
     }
@@ -416,7 +416,7 @@ impl RoomManager {
     }
 
     // Validate seat number is within max_players range
-    let max_seat = (room.max_players().value() - 1) as u8;
+    let max_seat = room.max_players().value() - 1;
     if seat.value() > max_seat {
       return Ok(TakeSeatOutcome::SeatOutOfRange);
     }
@@ -499,7 +499,7 @@ impl RoomManager {
     }
 
     // Validate viewing seat number is within max_players range
-    let max_seat = (room.max_players().value() - 1) as u8;
+    let max_seat = room.max_players().value() - 1;
     if viewing_seat.value() > max_seat {
       return Err(RoomError::InvalidOperation(format!(
         "Viewing seat number {} exceeds max players {}",
@@ -561,14 +561,14 @@ impl RoomManager {
 
     // Get occupied seats from participants
     let participants = self.room_repository.get_participants(room_id).await?;
-    let occupied_seats: Vec<u8> = participants
+    let occupied_seats: Vec<usize> = participants
       .into_iter()
       .filter_map(|p| p.seat_number().map(|s| s.value()))
       .collect();
 
     // Find available seats
-    let max_seat = (room.max_players().value() - 1) as u8;
-    let available_seats: Vec<u8> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
+    let max_seat = room.max_players().value() - 1;
+    let available_seats: Vec<usize> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
 
     if available_seats.is_empty() {
       return Ok(None);
@@ -578,7 +578,7 @@ impl RoomManager {
     use rand::Rng;
     let mut rng = rand::rng();
     let random_index = rng.random_range(0..available_seats.len());
-    let random_seat = SeatNumber::from(available_seats[random_index]);
+    let random_seat = SeatNumber::new(available_seats[random_index])?;
 
     // Try to take the seat
     match self.take_seat(room_id, user_id, random_seat).await? {
@@ -604,7 +604,7 @@ impl RoomManager {
 
     // Get occupied seats from participants before adding participant
     let participants = self.room_repository.get_participants(room_id).await?;
-    let occupied_seats: Vec<u8> = participants
+    let occupied_seats: Vec<usize> = participants
       .into_iter()
       .filter_map(|p| p.seat_number().map(|s| s.value()))
       .collect();
@@ -613,8 +613,8 @@ impl RoomManager {
     let participant = self.room_repository.get_participant(room_id, user_id).await?;
     let random_seat = if participant.is_none() {
       // Find available seats
-      let max_seat = (room.max_players().value() - 1) as u8;
-      let available_seats: Vec<u8> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
+      let max_seat = room.max_players().value() - 1;
+      let available_seats: Vec<usize> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
 
       if available_seats.is_empty() {
         return Ok(None);
@@ -624,7 +624,7 @@ impl RoomManager {
       use rand::Rng;
       let mut rng = rand::rng();
       let random_index = rng.random_range(0..available_seats.len());
-      let random_seat = SeatNumber::from(available_seats[random_index]);
+      let random_seat = SeatNumber::new(available_seats[random_index])?;
 
       // Add participant directly with the seat_number to avoid multiple db queries
       self
@@ -635,8 +635,8 @@ impl RoomManager {
       Some(random_seat)
     } else {
       // User already in room, find available seat and update
-      let max_seat = (room.max_players().value() - 1) as u8;
-      let available_seats: Vec<u8> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
+      let max_seat = room.max_players().value() - 1;
+      let available_seats: Vec<usize> = (0..=max_seat).filter(|seat| !occupied_seats.contains(seat)).collect();
 
       if available_seats.is_empty() {
         return Ok(None);
@@ -646,7 +646,7 @@ impl RoomManager {
       use rand::Rng;
       let mut rng = rand::rng();
       let random_index = rng.random_range(0..available_seats.len());
-      let random_seat = SeatNumber::from(available_seats[random_index]);
+      let random_seat = SeatNumber::new(available_seats[random_index])?;
 
       // Update seat directly
       self

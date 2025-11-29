@@ -2,7 +2,7 @@ use crate::domain::entities::User;
 use crate::domain::factories::UserFactory;
 use crate::domain::repositories::UserRepository;
 use crate::domain::valueobjects::{NickName, RawPassword, SaltedPassword, UserId};
-use crate::error::UserError;
+use crate::errors::UserError;
 
 pub struct UserManager {
   user_repository: Box<dyn UserRepository>,

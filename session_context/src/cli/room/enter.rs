@@ -1,4 +1,4 @@
-use room_context::{RoomService, room_service};
+use room_context::services::{RoomService, room_service};
 use user_context::services::UserService;
 
 pub async fn execute(

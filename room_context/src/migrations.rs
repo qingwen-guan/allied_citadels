@@ -1,13 +1,15 @@
 use sqlx::postgres::PgPoolOptions;
 
-use crate::error::RoomError;
+use common_context::domain::valueobjects::DbConfig;
 
-pub async fn create_room_table(dsn: &str) -> Result<(), RoomError> {
+use crate::errors::RoomError;
+
+pub async fn create_room_table(db: &DbConfig) -> Result<(), RoomError> {
   println!("Creating room table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
-    .connect(dsn)
+    .connect(&db.dsn)
     .await
     .map_err(RoomError::Database)?;
 
@@ -74,12 +76,12 @@ pub async fn create_room_table(dsn: &str) -> Result<(), RoomError> {
   Ok(())
 }
 
-pub async fn create_room_participant_table(dsn: &str) -> Result<(), RoomError> {
+pub async fn create_room_participant_table(db: &DbConfig) -> Result<(), RoomError> {
   println!("Creating room_participant table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
-    .connect(dsn)
+    .connect(&db.dsn)
     .await
     .map_err(RoomError::Database)?;
 
@@ -147,12 +149,12 @@ pub async fn create_room_participant_table(dsn: &str) -> Result<(), RoomError> {
   Ok(())
 }
 
-pub async fn create_room_to_user_message_table(dsn: &str) -> Result<(), RoomError> {
+pub async fn create_room_to_user_message_table(db: &DbConfig) -> Result<(), RoomError> {
   println!("Creating room_to_user_message table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
-    .connect(dsn)
+    .connect(&db.dsn)
     .await
     .map_err(RoomError::Database)?;
 
@@ -229,12 +231,12 @@ pub async fn create_room_to_user_message_table(dsn: &str) -> Result<(), RoomErro
   Ok(())
 }
 
-pub async fn drop_room_table(dsn: &str) -> Result<(), RoomError> {
+pub async fn drop_room_table(db: &DbConfig) -> Result<(), RoomError> {
   println!("Dropping room table...");
 
   let pool = PgPoolOptions::new()
     .max_connections(1)
-    .connect(dsn)
+    .connect(&db.dsn)
     .await
     .map_err(RoomError::Database)?;
 
@@ -273,26 +275,23 @@ pub async fn drop_room_table(dsn: &str) -> Result<(), RoomError> {
   Ok(())
 }
 
-pub async fn create_all_tables(dsn: &str) -> Result<(), RoomError> {
+pub async fn create_all_tables(db: &DbConfig) -> Result<(), RoomError> {
   println!("Creating all tables...");
   println!();
 
   // Create all user-related tables (user, user_session, user_to_user_message)
-  user_context::migrations::create_all_tables(dsn)
+  user_context::migrations::create_all_tables(&db.dsn)
     .await
-    .map_err(|e| match e {
-      user_context::UserError::Database(db_err) => RoomError::Database(db_err),
-      e => RoomError::InvalidOperation(format!("Failed to create user tables: {}", e)),
-    })?;
+    .map_err(|e| RoomError::InvalidOperation(format!("Failed to create user tables: {}", e)))?;
 
   // Create room table (no dependencies on other tables)
-  create_room_table(dsn).await?;
+  create_room_table(db).await?;
 
   // Create room_participant table (depends on room table)
-  create_room_participant_table(dsn).await?;
+  create_room_participant_table(db).await?;
 
   // Create room_to_user_message table (depends on room table)
-  create_room_to_user_message_table(dsn).await?;
+  create_room_to_user_message_table(db).await?;
 
   println!();
   println!("{}", "=".repeat(40));

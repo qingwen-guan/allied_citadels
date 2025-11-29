@@ -1,6 +1,6 @@
 use sqlx::postgres::PgPoolOptions;
 
-use crate::error::UserError;
+use crate::errors::UserError;
 
 pub async fn create_user_table(dsn: &str) -> Result<(), UserError> {
   println!("Creating user table...");

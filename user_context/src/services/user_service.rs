@@ -7,12 +7,12 @@
 
 use tracing::{error, info, instrument};
 
-use crate::config::Config;
+use crate::domain::valueobjects::UserConfig;
 use crate::domain::valueobjects::{SessionId, UserId};
 use crate::domain::{
   NickName, SessionInfo, SessionManager, SessionRepository, User, UserFactory, UserManager, UserRepository,
 };
-use crate::error::UserError;
+use crate::errors::UserError;
 
 pub struct UserService {
   user_manager: UserManager,
@@ -82,7 +82,7 @@ pub struct RenameUserResponse {
 
 impl UserService {
   pub fn new(
-    config: &Config, user_repository: Box<dyn UserRepository>, session_repository: Box<dyn SessionRepository>,
+    config: &UserConfig, user_repository: Box<dyn UserRepository>, session_repository: Box<dyn SessionRepository>,
     user_factory: UserFactory,
   ) -> Self {
     let user_manager = UserManager::new(user_repository, user_factory);

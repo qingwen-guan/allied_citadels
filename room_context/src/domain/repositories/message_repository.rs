@@ -3,7 +3,7 @@ use user_context::domain::valueobjects::UserId;
 
 use crate::domain::entities::RoomToUserRawMessage;
 use crate::domain::valueobjects::{MessageTopic, RoomId, RoomToUserMessageId};
-use crate::error::RoomError;
+use crate::errors::RoomError;
 
 /// RawMessageRepository trait - interface for raw message data access
 #[async_trait]

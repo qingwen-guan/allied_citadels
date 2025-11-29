@@ -1,4 +1,4 @@
-use room_context::RoomService;
+use room_context::services::RoomService;
 
 pub async fn execute(room_service: RoomService) -> Result<(), Box<dyn std::error::Error>> {
   let offset = None;

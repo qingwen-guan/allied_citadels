@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use crate::domain::entities::User;
 use crate::domain::valueobjects::{NickName, SaltedPassword, UserId};
-use crate::error::UserError;
+use crate::errors::UserError;
 
 /// UserRepository trait - interface for user data access
 #[async_trait]

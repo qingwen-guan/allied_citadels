@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::error::RoomError;
+use crate::errors::RoomError;
 
 /// MaxPlayers - value object for maximum number of players to provide type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

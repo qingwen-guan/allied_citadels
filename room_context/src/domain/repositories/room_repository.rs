@@ -4,7 +4,7 @@ use user_context::domain::valueobjects::UserId;
 
 use crate::domain::entities::{Room, RoomParticipant};
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
-use crate::error::RoomError;
+use crate::errors::RoomError;
 
 /// RoomRepository trait - interface for room data access
 #[async_trait]

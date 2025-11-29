@@ -1,6 +1,7 @@
 mod max_players;
 mod message_content;
 mod message_topic;
+mod room_config;
 mod room_id;
 mod room_name;
 mod room_number;
@@ -11,6 +12,7 @@ mod seat_number;
 pub use max_players::MaxPlayers;
 pub use message_content::MessageContent;
 pub use message_topic::MessageTopic;
+pub use room_config::RoomConfig;
 pub use room_id::RoomId;
 pub use room_name::RoomName;
 pub use room_number::RoomNumber;

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use crate::domain::valueobjects::{SessionId, UserId};
-use crate::error::UserError;
+use crate::errors::UserError;
 
 /// Session status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

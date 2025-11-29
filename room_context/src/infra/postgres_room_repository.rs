@@ -3,10 +3,10 @@ use user_context::domain::valueobjects::UserId;
 
 use common_context::domain::valueobjects::Pagination;
 
+use crate::domain::entities::{Room, RoomParticipant};
 use crate::domain::repositories::RoomRepository;
 use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, RoomNumber, SeatNumber};
-use crate::domain::{Room, RoomParticipant};
-use crate::error::RoomError;
+use crate::errors::RoomError;
 
 /// PostgreSQL implementation of RoomRepository
 pub struct PostgresRoomRepository {

@@ -1,6 +1,6 @@
 use crate::domain::entities::{RoomToUserMessage, RoomToUserRawMessage};
 use crate::domain::repositories::RawMessageRepository;
-use crate::error::RoomError;
+use crate::errors::RoomError;
 
 /// MessageManager - manages message operations using the message repository
 pub struct MessageManager {

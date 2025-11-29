@@ -1,6 +1,6 @@
 use crate::domain::repositories::{SessionInfo, SessionRepository};
 use crate::domain::valueobjects::{SessionId, UserId};
-use crate::error::UserError;
+use crate::errors::UserError;
 
 pub struct SessionManager {
   session_repository: Box<dyn SessionRepository>,

@@ -1,10 +1,10 @@
 use sqlx::PgPool;
 use user_context::domain::valueobjects::UserId;
 
-use crate::domain::RoomToUserRawMessage;
+use crate::domain::entities::RoomToUserRawMessage;
 use crate::domain::repositories::RawMessageRepository;
 use crate::domain::valueobjects::{MessageContent, MessageTopic, RoomId, RoomToUserMessageId};
-use crate::error::RoomError;
+use crate::errors::RoomError;
 
 /// PostgreSQL implementation of RawMessageRepository
 pub struct PostgresMessageRepository {

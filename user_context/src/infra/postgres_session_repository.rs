@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::domain::valueobjects::{SessionId, UserId};
 use crate::domain::{SessionInfo, SessionRepository};
-use crate::error::UserError;
+use crate::errors::UserError;
 
 /// PostgreSQL implementation of SessionRepository
 pub struct PostgresSessionRepository {
