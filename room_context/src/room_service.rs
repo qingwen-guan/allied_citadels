@@ -9,6 +9,15 @@ use crate::domain::valueobjects::{MaxPlayers, RoomId, RoomName, SeatNumber};
 use crate::domain::{Room, RoomManager, RoomParticipant, RoomRepository};
 use crate::error::RoomError;
 
+/// Result of entering a room
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnterRoomResult {
+  /// User successfully entered the room
+  Success,
+  /// User was already in the room
+  AlreadyInRoom,
+}
+
 /// Detailed room information for listing
 #[derive(Debug, Clone)]
 pub struct RoomDetails {
@@ -181,7 +190,7 @@ impl RoomService {
 
   /// Enter a room (always enters standing by, use change_seat to take a seat)
   #[instrument(skip(self), fields(user_id = user_id_str, room_id = room_id_str))]
-  pub async fn enter_room(&self, user_id_str: &str, room_id_str: &str) -> Result<(), RoomError> {
+  pub async fn enter_room(&self, user_id_str: &str, room_id_str: &str) -> Result<EnterRoomResult, RoomError> {
     // Parse user_id from string
     let user_id = user_id_str
       .parse::<UserId>()
@@ -192,20 +201,23 @@ impl RoomService {
       .parse::<RoomId>()
       .map_err(|e| RoomError::InvalidOperation(format!("Invalid room_id: {} ({})", room_id_str, e)))?;
 
-    let result = self.room_manager.enter_room_standing_by(user_id, room_id).await;
-    match &result {
+    match self.room_manager.enter_room_standing_by(user_id, room_id).await {
       Ok(crate::domain::EnterRoomOutcome::Success) => {
         info!("User {} entered room {} and is standing by", user_id, room_id);
+        Ok(EnterRoomResult::Success)
       },
       Ok(crate::domain::EnterRoomOutcome::AlreadyInRoom) => {
         info!("User {} is already in room {}", user_id, room_id);
+        Ok(EnterRoomResult::AlreadyInRoom)
       },
       Ok(crate::domain::EnterRoomOutcome::RoomExpired) => {
-        return Err(RoomError::InvalidOperation("Room has expired".to_string()));
+        Err(RoomError::InvalidOperation("Room has expired".to_string()))
       },
-      Err(e) => error!("Failed to enter room {} for user {}: {:?}", room_id, user_id, e),
+      Err(e) => {
+        error!("Failed to enter room {} for user {}: {:?}", room_id, user_id, e);
+        Err(e)
+      },
     }
-    result.map(|_| ())
   }
 
   /// Enter a room and take a random available seat

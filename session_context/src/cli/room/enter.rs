@@ -11,12 +11,20 @@ pub async fn execute(
     .ok_or_else(|| format!("Session not found: {}", session_id_str))?;
 
   // Enter the room (room_service will parse the IDs)
-  room_service.enter_room(&session_info.user_id, &room_id_str).await?;
-
-  println!(
-    "User {} entered room {} and is standing by",
-    session_info.user_id, room_id_str
-  );
+  match room_service.enter_room(&session_info.user_id, &room_id_str).await? {
+    room_context::EnterRoomResult::Success => {
+      println!(
+        "User {} entered room {} and is standing by",
+        session_info.user_id, room_id_str
+      );
+    },
+    room_context::EnterRoomResult::AlreadyInRoom => {
+      println!(
+        "User {} is already in room {} - no action required",
+        session_info.user_id, room_id_str
+      );
+    },
+  }
 
   Ok(())
 }

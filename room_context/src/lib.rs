@@ -14,5 +14,5 @@ pub use migrations::{
   create_all_tables, create_room_participant_table, create_room_table, create_room_to_user_message_table,
   drop_room_table,
 };
-pub use room_service::{RoomDetails, RoomService};
+pub use room_service::{EnterRoomResult, RoomDetails, RoomService};
 pub use user_context::UserId;
