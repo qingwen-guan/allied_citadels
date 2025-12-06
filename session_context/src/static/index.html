@@ -55,6 +55,24 @@
         pre {
             margin: 0;
         }
+
+        input[type="text"] {
+            padding: 8px;
+            margin: 5px;
+            width: 300px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        .input-group {
+            margin: 10px 0;
+        }
+
+        .input-group label {
+            display: inline-block;
+            width: 120px;
+            font-weight: bold;
+        }
     </style>
 </head>
 
@@ -69,6 +87,10 @@
 
     <div class="section">
         <h2>WebSocket JSON-RPC Test</h2>
+        <div class="input-group">
+            <label for="session-id-input">Session ID:</label>
+            <input type="text" id="session-id-input" placeholder="Enter session_id (UUID)">
+        </div>
         <button onclick="connectWs()">Connect WebSocket</button>
         <button onclick="disconnectWs()">Disconnect</button>
         <button onclick="sendPing()">Send Ping (JSON-RPC)</button>
@@ -82,13 +104,14 @@
     <script>
         let ws = null;
         let requestId = 1;
+        let loginRequestIds = new Set(); // Track login request IDs
 
         function addMessage(msg, type = '') {
             const div = document.getElementById('messages');
             const p = document.createElement('div');
             p.className = 'message ' + type;
             const pre = document.createElement('pre');
-            pre.textContent = new Date().toLocaleTimeString() + ': ' + msg;
+            pre.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
             p.appendChild(pre);
             div.appendChild(p);
             div.scrollTop = div.scrollHeight;
@@ -119,6 +142,22 @@
                 try {
                     const data = JSON.parse(event.data);
                     addMessage('Received: ' + JSON.stringify(data, null, 2), 'response');
+
+                    // Check if this is a successful login response
+                    if (data.result && data.id !== undefined) {
+                        const responseId = data.id;
+                        if (loginRequestIds.has(responseId)) {
+                            // This is a response to a login request
+                            if (data.result.session_id) {
+                                // Extract session_id and fill the textbox
+                                const sessionIdInput = document.getElementById('session-id-input');
+                                sessionIdInput.value = data.result.session_id;
+                                addMessage('Session ID extracted and filled into textbox: ' + data.result.session_id, 'response');
+                            }
+                            // Remove from tracking set
+                            loginRequestIds.delete(responseId);
+                        }
+                    }
                 } catch (e) {
                     addMessage('Received (non-JSON): ' + event.data, 'response');
                 }
@@ -170,12 +209,15 @@
                 const nickname = prompt('Enter nickname:');
                 const password = prompt('Enter password:');
                 if (nickname && password) {
+                    const currentId = requestId++;
                     const request = {
                         jsonrpc: '2.0',
                         method: 'login',
                         params: { nickname: nickname, password: password },
-                        id: requestId++
+                        id: currentId
                     };
+                    // Track this as a login request
+                    loginRequestIds.add(currentId);
                     const msg = JSON.stringify(request);
                     ws.send(msg);
                     addMessage('Sent: ' + msg.replace(/"(password)":"[^"]*"/, '"$1":"***"'), 'request');
@@ -226,9 +268,9 @@
 
         function sendRoomCreate() {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                const session_id = prompt('Enter session_id (UUID):');
+                const session_id = document.getElementById('session-id-input').value.trim();
                 if (!session_id) {
-                    addMessage('Session ID is required', 'error');
+                    addMessage('Session ID is required. Please enter it in the textbox above.', 'error');
                     return;
                 }
                 const name = prompt('Enter room name:');
