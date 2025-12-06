@@ -4,6 +4,12 @@ use serde_json::json;
 // JSON-RPC 2.0 version constant
 pub const JSON_RPC_VERSION: &str = "2.0";
 
+/// JSON-RPC 2.0 request/response ID.
+/// Per JSON-RPC 2.0 spec, IDs can be numbers, strings, or null (for notifications).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct JsonRpcId(pub serde_json::Value);
+
 // JSON-RPC 2.0 standard error codes
 pub const JSON_RPC_INVALID_REQUEST: i32 = -32600;
 pub const JSON_RPC_METHOD_NOT_FOUND: i32 = -32601;
@@ -30,7 +36,7 @@ pub struct JsonRpcRequest {
   /// Operations that would typically be notifications should be called as Requests
   /// with an `id` and will return an acknowledgment response.
   /// Supports numeric, string, and UUID IDs per JSON-RPC 2.0 spec.
-  pub id: serde_json::Value,
+  pub id: JsonRpcId,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,7 +46,7 @@ pub struct JsonRpcResponse {
   result: Option<serde_json::Value>,
   #[serde(skip_serializing_if = "Option::is_none")]
   error: Option<JsonRpcError>,
-  id: serde_json::Value,
+  id: JsonRpcId,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,7 +58,7 @@ pub struct JsonRpcError {
 }
 
 impl JsonRpcResponse {
-  pub fn success(id: serde_json::Value, result: serde_json::Value) -> Self {
+  pub fn success(id: JsonRpcId, result: serde_json::Value) -> Self {
     Self {
       jsonrpc: JSON_RPC_VERSION.to_string(),
       result: Some(result),
@@ -61,7 +67,7 @@ impl JsonRpcResponse {
     }
   }
 
-  pub fn error(id: serde_json::Value, code: i32, message: String, data: Option<serde_json::Value>) -> Self {
+  pub fn error(id: JsonRpcId, code: i32, message: String, data: Option<serde_json::Value>) -> Self {
     Self {
       jsonrpc: JSON_RPC_VERSION.to_string(),
       result: None,
@@ -71,32 +77,56 @@ impl JsonRpcResponse {
   }
 }
 
-pub async fn handle_jsonrpc_request(
-  text: &str, state: &crate::state::AppState,
-) -> Result<Option<JsonRpcResponse>, Box<dyn std::error::Error + Send + Sync>> {
-  let request: JsonRpcRequest = serde_json::from_str(text)?;
-
-  // Validate id is a valid type per JSON-RPC 2.0 spec (number or string)
-  // Null is valid per spec but represents a notification, which we don't support
-  // If invalid, treat as notification (no response per spec)
-  // This check MUST come before any error responses to ensure notifications never receive responses
-  match &request.id {
-    serde_json::Value::Number(_) | serde_json::Value::String(_) => {
-      // Valid ID type - proceed with request
+pub async fn handle_jsonrpc_request(text: &str, state: &crate::state::AppState) -> Option<JsonRpcResponse> {
+  let request: JsonRpcRequest = match serde_json::from_str::<JsonRpcRequest>(text) {
+    Ok(req) => {
+      // Validate id is a valid type per JSON-RPC 2.0 spec (number or string)
+      // Null is valid per spec but represents a notification, which we don't support
+      // If invalid, treat as notification (no response per spec)
+      // This check MUST come before any error responses to ensure notifications never receive responses
+      match &req.id.0 {
+        serde_json::Value::Number(_) | serde_json::Value::String(_) => {
+          // Valid ID type - proceed with request
+          req
+        },
+        serde_json::Value::Null => {
+          // Null ID is a notification - not supported, treat as notification (no response per JSON-RPC 2.0 spec)
+          return None;
+        },
+        _ => {
+          // Invalid ID type - treat as notification (no response per JSON-RPC 2.0 spec)
+          return None;
+        },
+      }
     },
-    serde_json::Value::Null => {
-      // Null ID is a notification - not supported, treat as notification (no response per JSON-RPC 2.0 spec)
-      return Ok(None);
+    Err(_) => {
+      // Try to extract id from JSON for error response (don't deserialize full struct)
+      // Only accept Number or String IDs per JSON-RPC 2.0 spec
+      // Null IDs are notifications and should never receive responses
+      if let Some(id) = serde_json::from_str::<serde_json::Value>(text).ok().and_then(|v| {
+        let id_val = v.get("id")?;
+        // Validate ID is a valid type (number or string only, not null)
+        match id_val {
+          serde_json::Value::Number(_) | serde_json::Value::String(_) => Some(id_val.clone()),
+          _ => None,
+        }
+      }) {
+        return Some(JsonRpcResponse::error(
+          JsonRpcId(id),
+          JSON_RPC_INVALID_REQUEST,
+          "Invalid JSON-RPC request".to_string(),
+          None,
+        ));
+      } else {
+        // If id cannot be extracted, treat as notification (no response per JSON-RPC 2.0 spec)
+        return None;
+      }
     },
-    _ => {
-      // Invalid ID type - treat as notification (no response per JSON-RPC 2.0 spec)
-      return Ok(None);
-    },
-  }
+  };
 
   // Validate jsonrpc version (only after confirming ID is valid, so we can send error response)
   if request.jsonrpc != JSON_RPC_VERSION {
-    return Ok(Some(JsonRpcResponse::error(
+    return Some(JsonRpcResponse::error(
       request.id,
       JSON_RPC_INVALID_REQUEST,
       format!(
@@ -104,7 +134,7 @@ pub async fn handle_jsonrpc_request(
         JSON_RPC_VERSION, request.jsonrpc
       ),
       None,
-    )));
+    ));
   }
 
   // All requests must have an id (id is required, so deserialization will fail if missing)
@@ -112,41 +142,65 @@ pub async fn handle_jsonrpc_request(
 }
 
 async fn execute_jsonrpc_method(
-  method: &str, params: Option<serde_json::Value>, state: &crate::state::AppState, id: serde_json::Value,
-) -> Result<Option<JsonRpcResponse>, Box<dyn std::error::Error + Send + Sync>> {
+  method: &str, params: Option<serde_json::Value>, state: &crate::state::AppState, id: JsonRpcId,
+) -> Option<JsonRpcResponse> {
   match method {
-    "ping" => Ok(Some(JsonRpcResponse::success(
+    "ping" => Some(JsonRpcResponse::success(
       id,
       json!({ "pong": true, "timestamp": chrono::Utc::now().to_rfc3339() }),
-    ))),
+    )),
     "echo" => {
       let text = params
         .and_then(|p| p.get("text").and_then(|v| v.as_str().map(|s| s.to_string())))
         .unwrap_or_else(|| "No text provided".to_string());
-      Ok(Some(JsonRpcResponse::success(
+      Some(JsonRpcResponse::success(
         id,
         json!({ "echo": text, "timestamp": chrono::Utc::now().to_rfc3339() }),
-      )))
+      ))
     },
     "login" => {
-      let params = params.ok_or_else(|| "Missing params")?;
-      let nickname = params
-        .get("nickname")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing or invalid 'nickname' parameter")?;
-      let password = params
-        .get("password")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing or invalid 'password' parameter")?;
+      let params = match params {
+        Some(p) => p,
+        None => {
+          return Some(JsonRpcResponse::error(
+            id,
+            JSON_RPC_INVALID_REQUEST,
+            "Missing params".to_string(),
+            None,
+          ));
+        },
+      };
+      let nickname = match params.get("nickname").and_then(|v| v.as_str()) {
+        Some(n) => n,
+        None => {
+          return Some(JsonRpcResponse::error(
+            id,
+            JSON_RPC_INVALID_REQUEST,
+            "Missing or invalid 'nickname' parameter".to_string(),
+            None,
+          ));
+        },
+      };
+      let password = match params.get("password").and_then(|v| v.as_str()) {
+        Some(p) => p,
+        None => {
+          return Some(JsonRpcResponse::error(
+            id,
+            JSON_RPC_INVALID_REQUEST,
+            "Missing or invalid 'password' parameter".to_string(),
+            None,
+          ));
+        },
+      };
 
       match state.user_service.login(nickname, password).await {
-        Ok(login_response) => Ok(Some(JsonRpcResponse::success(
+        Ok(login_response) => Some(JsonRpcResponse::success(
           id,
           json!({
             "session_id": login_response.session_id,
             "user_id": login_response.user_id,
           }),
-        ))),
+        )),
         Err(e) => {
           let (code, message) = match e {
             user_context::errors::UserError::InvalidCredentials => {
@@ -161,7 +215,7 @@ async fn execute_jsonrpc_method(
             },
             _ => (JSON_RPC_INTERNAL_ERROR, format!("Login failed: {}", e)),
           };
-          Ok(Some(JsonRpcResponse::error(id, code, message, None)))
+          Some(JsonRpcResponse::error(id, code, message, None))
         },
       }
     },
@@ -197,7 +251,7 @@ async fn execute_jsonrpc_method(
               })
             })
             .collect();
-          Ok(Some(JsonRpcResponse::success(id, json!({ "rooms": rooms_json }))))
+          Some(JsonRpcResponse::success(id, json!({ "rooms": rooms_json })))
         },
         Err(e) => {
           let (code, message) = match e {
@@ -209,27 +263,58 @@ async fn execute_jsonrpc_method(
             },
             _ => (JSON_RPC_INTERNAL_ERROR, format!("Failed to list rooms: {}", e)),
           };
-          Ok(Some(JsonRpcResponse::error(id, code, message, None)))
+          Some(JsonRpcResponse::error(id, code, message, None))
         },
       }
     },
     "room.create" => {
-      let params = params.ok_or_else(|| "Missing params")?;
-      let session_id = params
-        .get("session_id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing or invalid 'session_id' parameter")?;
-      let name = params
-        .get("name")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing or invalid 'name' parameter")?;
-      let max_players = params
-        .get("max_players")
-        .and_then(|v| v.as_u64())
-        .ok_or_else(|| "Missing or invalid 'max_players' parameter")? as usize;
+      let params = match params {
+        Some(p) => p,
+        None => {
+          return Some(JsonRpcResponse::error(
+            id,
+            JSON_RPC_INVALID_REQUEST,
+            "Missing params".to_string(),
+            None,
+          ));
+        },
+      };
+      let session_id = match params.get("session_id").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => {
+          return Some(JsonRpcResponse::error(
+            id,
+            JSON_RPC_INVALID_REQUEST,
+            "Missing or invalid 'session_id' parameter".to_string(),
+            None,
+          ));
+        },
+      };
+      let name = match params.get("name").and_then(|v| v.as_str()) {
+        Some(n) => n,
+        None => {
+          return Some(JsonRpcResponse::error(
+            id,
+            JSON_RPC_INVALID_REQUEST,
+            "Missing or invalid 'name' parameter".to_string(),
+            None,
+          ));
+        },
+      };
+      let max_players = match params.get("max_players").and_then(|v| v.as_u64()) {
+        Some(mp) => mp as usize,
+        None => {
+          return Some(JsonRpcResponse::error(
+            id,
+            JSON_RPC_INVALID_REQUEST,
+            "Missing or invalid 'max_players' parameter".to_string(),
+            None,
+          ));
+        },
+      };
 
       match state.session_service.create_room(session_id, name, max_players).await {
-        Ok(room) => Ok(Some(JsonRpcResponse::success(
+        Ok(room) => Some(JsonRpcResponse::success(
           id,
           json!({
             "id": room.id().to_string(),
@@ -240,7 +325,7 @@ async fn execute_jsonrpc_method(
             "created_at": room.created_at().to_rfc3339(),
             "expires_at": room.expires_at().to_rfc3339(),
           }),
-        ))),
+        )),
         Err(e) => {
           let (code, message) = match e {
             crate::services::SessionServiceError::SessionNotFound(_) => {
@@ -263,20 +348,19 @@ async fn execute_jsonrpc_method(
               (ERR_ROOM_NAME_EXISTS, "Room name already exists".to_string())
             },
           };
-          Ok(Some(JsonRpcResponse::error(id, code, message, None)))
+          Some(JsonRpcResponse::error(id, code, message, None))
         },
       }
     },
     "welcome" => {
       // Acknowledgment for welcome message
-      Ok(Some(JsonRpcResponse::success(id, json!({ "acknowledged": true }))))
+      Some(JsonRpcResponse::success(id, json!({ "acknowledged": true })))
     },
-    _ => Ok(Some(JsonRpcResponse::error(
+    _ => Some(JsonRpcResponse::error(
       id,
       JSON_RPC_METHOD_NOT_FOUND,
       format!("Method not found: {}", method),
       None,
-    ))),
+    )),
   }
 }
-

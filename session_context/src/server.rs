@@ -17,7 +17,7 @@ use tracing::{error, info};
 use room_context::services::RoomService;
 use user_context::services::UserService;
 
-use crate::jsonrpc::{JSON_RPC_INTERNAL_ERROR, JSON_RPC_VERSION, handle_jsonrpc_request};
+use crate::jsonrpc::{JSON_RPC_VERSION, handle_jsonrpc_request};
 use crate::services::SessionService;
 use crate::state::{AppState, ConnectionInfo};
 
@@ -97,7 +97,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     match msg {
       Message::Text(text) => {
         match handle_jsonrpc_request(&text, &state).await {
-          Ok(Some(response)) => {
+          Some(response) => {
             let response_text = serde_json::to_string(&response).unwrap_or_else(|e| {
               error!("Failed to serialize response: {}", e);
               String::new()
@@ -108,35 +108,8 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
               }
             }
           },
-          Ok(None) => {
+          None => {
             // Notification, no response needed
-          },
-          Err(e) => {
-            error!("Error handling JSON-RPC request: {}", e);
-            // Try to extract id from JSON for error response (don't deserialize full struct)
-            // Only accept Number or String IDs per JSON-RPC 2.0 spec
-            // Null IDs are notifications and should never receive responses
-            if let Some(id) = serde_json::from_str::<serde_json::Value>(&text).ok().and_then(|v| {
-              let id_val = v.get("id")?;
-              // Validate ID is a valid type (number or string only, not null)
-              match id_val {
-                serde_json::Value::Number(_) | serde_json::Value::String(_) => Some(id_val.clone()),
-                _ => None,
-              }
-            }) {
-              let error_response = crate::jsonrpc::JsonRpcResponse::error(
-                id,
-                JSON_RPC_INTERNAL_ERROR,
-                "Internal error".to_string(),
-                Some(json!({ "message": e.to_string() })),
-              );
-              let error_text = serde_json::to_string(&error_response).unwrap_or_default();
-              if !error_text.is_empty() {
-                let _ = sender.send(Message::Text(error_text.into())).await;
-              }
-            } else {
-              // If id cannot be extracted, treat as notification (no response per JSON-RPC 2.0 spec)
-            }
           },
         }
       },
