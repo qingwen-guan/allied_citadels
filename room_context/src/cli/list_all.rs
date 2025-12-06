@@ -3,14 +3,14 @@ use room_context::services::RoomService;
 pub async fn execute(room_service: RoomService) -> Result<(), Box<dyn std::error::Error>> {
   let offset = None;
   let limit = None;
-  let rooms = room_service.list_active_rooms(offset, limit).await?;
+  let rooms = room_service.list_rooms(offset, limit).await?;
 
   if rooms.is_empty() {
-    println!("No active (non-expired) rooms found.");
+    println!("No rooms found.");
     return Ok(());
   }
 
-  println!("Found {} active (non-expired) room(s):", rooms.len());
+  println!("Found {} room(s):", rooms.len());
   println!();
   for room in rooms {
     let created_at_local = room.created_at().with_timezone(&chrono::Local);
@@ -29,3 +29,4 @@ pub async fn execute(room_service: RoomService) -> Result<(), Box<dyn std::error
 
   Ok(())
 }
+

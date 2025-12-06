@@ -1,4 +1,5 @@
 mod list;
+mod list_all;
 
 use clap::{Parser, Subcommand};
 use room_context::services::RoomService;
@@ -26,8 +27,10 @@ pub enum Command {
 
 #[derive(Subcommand)]
 pub enum RoomCommand {
-  /// List all rooms
+  /// List active (non-expired) rooms
   List,
+  /// List all rooms (including expired)
+  ListAll,
   /// Create a new room
   Create {
     name: String,
@@ -81,6 +84,7 @@ async fn handle_room_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
   match command {
     RoomCommand::List => list::execute(room_service).await,
+    RoomCommand::ListAll => list_all::execute(room_service).await,
     RoomCommand::Create {
       name,
       creator,

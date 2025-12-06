@@ -1,15 +1,15 @@
+use crate::services::SessionService;
 use room_context::services::RoomService;
-use user_context::services::UserService;
 
 pub async fn execute(
-  user_service: UserService, room_service: RoomService, session_id_str: String, offset: Option<usize>,
+  session_service: SessionService, room_service: RoomService, session_id_str: String, offset: Option<usize>,
   limit: Option<usize>,
 ) -> Result<(), Box<dyn std::error::Error>> {
   // Verify session exists (for authentication/authorization)
-  let _session_info = user_service
-    .get_session(&session_id_str)
-    .await?
-    .ok_or_else(|| format!("Session not found: {}", session_id_str))?;
+  session_service
+    .verify_session(&session_id_str)
+    .await
+    .map_err(|e| format!("Session verification failed: {}", e))?;
 
   // List all active (non-expired) rooms with detailed information
   let rooms = room_service.list_active_rooms_detailed(offset, limit).await?;

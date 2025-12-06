@@ -12,8 +12,11 @@ use common_context::database::create_postgres_pool;
 use room_context::domain::factories::RoomConfigFactory;
 use room_context::domain::valueobjects::RoomConfig;
 use room_context::infra::{PostgresMessageRepository, PostgresRoomRepository};
+use room_context::managers::RoomManager;
 use room_context::services::RoomService;
 use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
+use user_context::domain::SessionManager;
 use user_context::domain::UserFactory;
 use user_context::domain::valueobjects::Salt;
 use user_context::domain::valueobjects::UserConfig;
@@ -52,6 +55,22 @@ async fn create_room_service(config: &RoomConfig) -> Result<RoomService, RoomErr
   Ok(RoomService::new(room_repository, user_repository, message_repository))
 }
 
+async fn create_session_service(
+  config: &crate::config::SessionConfig, room_config: &RoomConfig,
+) -> Result<crate::services::SessionService, Box<dyn std::error::Error>> {
+  let db_pool = create_postgres_pool(&config.db).await?;
+  let session_repository = Box::new(PostgresSessionRepository::new(db_pool.clone()));
+  let session_manager = Arc::new(SessionManager::new(session_repository, config.session_duration_hours));
+
+  let room_pool = create_postgres_pool(&room_config.db).await?;
+  let room_repository = Box::new(PostgresRoomRepository::new(room_pool.clone()));
+  let user_repository = Box::new(PostgresUserRepository::new(room_pool.clone()));
+  let message_repository = Box::new(PostgresMessageRepository::new(room_pool));
+  let room_manager = Arc::new(RoomManager::new(room_repository, user_repository, message_repository));
+
+  Ok(crate::services::SessionService::new(session_manager, room_manager))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
   // Initialize tracing subscriber
@@ -67,5 +86,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let room_config = RoomConfigFactory::new().load()?;
   let room_service = create_room_service(&room_config).await?;
 
-  cli::handle_command(cli.command, user_service, room_service, &config.server_addr).await
+  // Load session config and create session service
+  let session_config = crate::config::SessionConfig::load()?;
+  let session_service = create_session_service(&session_config, &room_config).await?;
+
+  cli::handle_command(cli.command, user_service, room_service, session_service, &config.server_addr).await
 }
