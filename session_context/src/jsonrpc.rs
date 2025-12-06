@@ -6,9 +6,30 @@ pub const JSON_RPC_VERSION: &str = "2.0";
 
 /// JSON-RPC 2.0 request/response ID.
 /// Per JSON-RPC 2.0 spec, IDs can be numbers, strings, or null (for notifications).
+///
+/// ID Convention:
+/// - Server-initiated requests use: `srv-{uuid}` format
+/// - Client-initiated requests use: `cli-{uuid}` format
+/// This ensures no ID collisions in bidirectional JSON-RPC communication.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct JsonRpcId(pub serde_json::Value);
+
+impl JsonRpcId {
+  /// Generate a new server request ID in the format `srv-{uuid}`
+  pub fn new_server_id() -> Self {
+    let uuid = uuid::Uuid::new_v4();
+    Self(serde_json::Value::String(format!("srv-{}", uuid)))
+  }
+
+  /// Generate a new client request ID in the format `cli-{uuid}`
+  /// This is provided as a helper for client implementations.
+  #[allow(dead_code)]
+  pub fn new_client_id() -> Self {
+    let uuid = uuid::Uuid::new_v4();
+    Self(serde_json::Value::String(format!("cli-{}", uuid)))
+  }
+}
 
 // JSON-RPC 2.0 standard error codes
 pub const JSON_RPC_INVALID_REQUEST: i32 = -32600;
@@ -31,10 +52,11 @@ pub struct JsonRpcRequest {
   pub method: String,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub params: Option<serde_json::Value>,
-  /// Request ID. This server only supports Requests (not Notifications).
+  /// Request ID. This server supports bidirectional Requests (not Notifications).
   /// All method calls must include an `id` field and will receive a response.
-  /// Operations that would typically be notifications should be called as Requests
-  /// with an `id` and will return an acknowledgment response.
+  /// ID Convention:
+  /// - Server-initiated requests: `srv-{uuid}` format
+  /// - Client-initiated requests: `cli-{uuid}` format
   /// Supports numeric, string, and UUID IDs per JSON-RPC 2.0 spec.
   pub id: JsonRpcId,
 }

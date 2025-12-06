@@ -17,7 +17,7 @@ use tracing::{error, info};
 use room_context::services::RoomService;
 use user_context::services::UserService;
 
-use crate::jsonrpc::{JSON_RPC_VERSION, handle_jsonrpc_request};
+use crate::jsonrpc::{JSON_RPC_VERSION, JsonRpcId, handle_jsonrpc_request};
 use crate::services::SessionService;
 use crate::state::{AppState, ConnectionInfo};
 
@@ -80,14 +80,16 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     info!("New WebSocket connection: {} (total: {})", conn_id, count);
   }
 
-  // Send welcome message as JSON-RPC notification
+  // Send welcome message as JSON-RPC request with server ID
+  let welcome_id = JsonRpcId::new_server_id();
   let welcome = json!({
       "jsonrpc": JSON_RPC_VERSION,
       "method": "welcome",
       "params": {
           "connection_id": conn_id,
           "message": "Connected to Session Context Server"
-      }
+      },
+      "id": welcome_id.0
   });
   let welcome_text = serde_json::to_string(&welcome).unwrap();
   let _ = sender.send(Message::Text(welcome_text.into())).await;

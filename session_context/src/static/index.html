@@ -103,8 +103,12 @@
 
     <script>
         let ws = null;
-        let requestId = 1;
         let loginRequestIds = new Set(); // Track login request IDs
+
+        // Generate client request ID in cli-{uuid} format
+        function generateClientId() {
+            return 'cli-' + crypto.randomUUID();
+        }
 
         function addMessage(msg, type = '') {
             const div = document.getElementById('messages');
@@ -178,7 +182,7 @@
                 const request = {
                     jsonrpc: '2.0',
                     method: 'ping',
-                    id: requestId++
+                    id: generateClientId()
                 };
                 const msg = JSON.stringify(request);
                 ws.send(msg);
@@ -194,7 +198,7 @@
                     jsonrpc: '2.0',
                     method: 'echo',
                     params: { text: 'Hello from client at ' + new Date().toLocaleTimeString() },
-                    id: requestId++
+                    id: generateClientId()
                 };
                 const msg = JSON.stringify(request);
                 ws.send(msg);
@@ -209,7 +213,7 @@
                 const nickname = prompt('Enter nickname:');
                 const password = prompt('Enter password:');
                 if (nickname && password) {
-                    const currentId = requestId++;
+                    const currentId = generateClientId();
                     const request = {
                         jsonrpc: '2.0',
                         method: 'login',
@@ -250,7 +254,7 @@
                 const request = {
                     jsonrpc: '2.0',
                     method: 'room.list',
-                    id: requestId++
+                    id: generateClientId()
                 };
 
                 // Only add params if we have any
@@ -297,7 +301,7 @@
                         name: name,
                         max_players: max_players
                     },
-                    id: requestId++
+                    id: generateClientId()
                 };
 
                 const msg = JSON.stringify(request);
