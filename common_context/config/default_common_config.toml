@@ -1,0 +1,13 @@
+[db]
+# PostgreSQL database connection string
+# Format: postgresql://user:password@host:port/database
+dsn = "postgresql://postgres:Pwd123@localhost:15432/allied_citadels"
+
+# Connection pool settings
+min_connections = 2
+max_connections = 10
+
+# Optional connection pool timeout settings (with defaults)
+# acquire_timeout_seconds = 30
+# idle_timeout_seconds = 600
+# max_lifetime_seconds = 1800

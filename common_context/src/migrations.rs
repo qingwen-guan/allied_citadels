@@ -4,6 +4,8 @@ use sqlx::postgres::PgPoolOptions;
 pub enum MigrationError {
   #[error("Database error: {0}")]
   Database(#[from] sqlx::Error),
+  #[error("Config error: {0}")]
+  Config(String),
 }
 
 pub async fn drop_all_tables(dsn: &str) -> Result<(), MigrationError> {
