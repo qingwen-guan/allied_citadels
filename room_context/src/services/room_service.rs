@@ -64,7 +64,7 @@ impl RoomService {
 
   /// Create a new room
   #[instrument(skip(self), fields(name = name_str))]
-  pub async fn create_room(&self, name_str: &str, creator: &str, max_players: usize) -> Result<Room, RoomError> {
+  pub async fn create_room(&self, creator: &str, name_str: &str, max_players: usize) -> Result<Room, RoomError> {
     // Parse creator string to UserId
     let creator_id = creator
       .parse::<UserId>()
@@ -288,8 +288,8 @@ impl RoomService {
   }
 
   /// Take a random available seat in a room
-  #[instrument(skip(self), fields(room_id = room_id_str, user_id = user_id_str))]
-  pub async fn take_random_seat(&self, room_id_str: &str, user_id_str: &str) -> Result<Option<Seat>, RoomError> {
+  #[instrument(skip(self), fields(user_id = user_id_str, room_id = room_id_str))]
+  pub async fn take_random_seat(&self, user_id_str: &str, room_id_str: &str) -> Result<Option<Seat>, RoomError> {
     // Parse user_id from string
     let user_id = user_id_str
       .parse::<UserId>()
@@ -304,8 +304,8 @@ impl RoomService {
   }
 
   /// Leave a room
-  #[instrument(skip(self), fields(room_id = room_id_str, user_id = user_id_str))]
-  pub async fn leave_room(&self, room_id_str: &str, user_id_str: &str) -> Result<(), RoomError> {
+  #[instrument(skip(self), fields(user_id = user_id_str, room_id = room_id_str))]
+  pub async fn leave_room(&self, user_id_str: &str, room_id_str: &str) -> Result<(), RoomError> {
     // Parse user_id from string
     let user_id = user_id_str
       .parse::<UserId>()
@@ -316,7 +316,7 @@ impl RoomService {
       .parse::<RoomId>()
       .map_err(|e| RoomError::InvalidOperation(format!("Invalid room_id: {} ({})", room_id_str, e)))?;
 
-    let result = self.room_manager.leave_room(room_id, user_id).await;
+    let result = self.room_manager.leave_room(user_id, room_id).await;
     match &result {
       Ok(_) => info!("User {} left room {}", user_id_str, room_id_str),
       Err(e) => error!("Failed to leave room {} for user {}: {:?}", room_id_str, user_id_str, e),
@@ -326,9 +326,9 @@ impl RoomService {
 
   /// Change seat in a room
   /// Returns true if seat was successfully changed, false otherwise
-  #[instrument(skip(self), fields(room_id = room_id_str, user_id = user_id_str, seat = new_seat_index))]
+  #[instrument(skip(self), fields(user_id = user_id_str, room_id = room_id_str, seat = new_seat_index))]
   pub async fn change_seat(
-    &self, room_id_str: &str, user_id_str: &str, new_seat_index: usize,
+    &self, user_id_str: &str, room_id_str: &str, new_seat_index: usize,
   ) -> Result<bool, RoomError> {
     // Parse user_id from string
     let user_id = user_id_str
@@ -401,8 +401,8 @@ impl RoomService {
   }
 
   /// Stand up from seat (become standing by)
-  #[instrument(skip(self), fields(room_id = room_id_str, user_id = user_id_str))]
-  pub async fn stand_up(&self, room_id_str: &str, user_id_str: &str) -> Result<(), RoomError> {
+  #[instrument(skip(self), fields(user_id = user_id_str, room_id = room_id_str))]
+  pub async fn stand_up(&self, user_id_str: &str, room_id_str: &str) -> Result<(), RoomError> {
     // Parse user_id from string
     let user_id = user_id_str
       .parse::<UserId>()
@@ -436,9 +436,9 @@ impl RoomService {
   }
 
   /// View behind a seat (must be standing by)
-  #[instrument(skip(self), fields(room_id = room_id_str, user_id = user_id_str, viewing_seat = viewing_seat_index_value))]
+  #[instrument(skip(self), fields(user_id = user_id_str, room_id = room_id_str, viewing_seat = viewing_seat_index_value))]
   pub async fn view_behind_seat(
-    &self, room_id_str: &str, user_id_str: &str, viewing_seat_index_value: usize,
+    &self, user_id_str: &str, room_id_str: &str, viewing_seat_index_value: usize,
   ) -> Result<(), RoomError> {
     // Parse user_id from string
     let user_id = user_id_str
@@ -489,8 +489,8 @@ impl RoomService {
   }
 
   /// Stop viewing (but remain in room)
-  #[instrument(skip(self), fields(room_id = room_id, user_id = user_id))]
-  pub async fn stop_viewing(&self, room_id: &str, user_id: &str) -> Result<(), RoomError> {
+  #[instrument(skip(self), fields(user_id = user_id, room_id = room_id))]
+  pub async fn stop_viewing(&self, user_id: &str, room_id: &str) -> Result<(), RoomError> {
     // Parse user_id from string
     let user_id_parsed = user_id
       .parse::<UserId>()
@@ -523,26 +523,6 @@ impl RoomService {
     let result = self.room_manager.get_room_participants(room_id_parsed).await;
     if let Err(e) = &result {
       error!("Error getting participants for room {}: {:?}", room_id, e);
-    }
-    result
-  }
-
-  /// Get participant info for a user in a room
-  #[instrument(skip(self), fields(room_id = room_id, user_id = user_id))]
-  pub async fn get_participant(&self, room_id: &str, user_id: &str) -> Result<Option<RoomParticipant>, RoomError> {
-    // Parse user_id from string
-    let user_id_parsed = user_id
-      .parse::<UserId>()
-      .map_err(|e| RoomError::InvalidOperation(format!("Invalid user_id: {} ({})", user_id, e)))?;
-
-    // Parse room_id from string
-    let room_id_parsed = room_id
-      .parse::<RoomId>()
-      .map_err(|e| RoomError::InvalidOperation(format!("Invalid room_id: {} ({})", room_id, e)))?;
-
-    let result = self.room_manager.get_participant(room_id_parsed, user_id_parsed).await;
-    if let Err(e) = &result {
-      error!("Error getting participant {} in room {}: {:?}", user_id, room_id, e);
     }
     result
   }

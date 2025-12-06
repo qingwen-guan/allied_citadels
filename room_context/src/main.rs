@@ -171,7 +171,7 @@ async fn create_room(
   State(service): State<Arc<RoomService>>, Json(payload): Json<CreateRoomRequest>,
 ) -> Result<Json<RoomResponse>, AppError> {
   let room = service
-    .create_room(&payload.name, &payload.creator, payload.max_players)
+    .create_room(&payload.creator, &payload.name, payload.max_players)
     .await
     .map_err(AppError::Room)?;
   Ok(Json(RoomResponse {

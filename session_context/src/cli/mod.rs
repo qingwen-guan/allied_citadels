@@ -26,6 +26,8 @@ pub enum Command {
 pub enum RoomCommand {
   /// List all active (non-expired) rooms
   List {
+    /// Session ID of the user
+    #[arg(short = 's', long = "session-id")]
     session_id: String,
     /// Offset for pagination
     #[arg(long)]
@@ -37,6 +39,7 @@ pub enum RoomCommand {
   /// Create a new room
   Create {
     /// Session ID of the user creating the room
+    #[arg(short = 's', long = "session-id")]
     session_id: String,
     /// Room name
     name: String,
@@ -46,6 +49,7 @@ pub enum RoomCommand {
   /// Enter a room
   Enter {
     /// Session ID of the user entering the room
+    #[arg(short = 's', long = "session-id")]
     session_id: String,
     /// Room ID (UUID)
     room_id: String,
@@ -54,6 +58,15 @@ pub enum RoomCommand {
   #[command(name = "enter-and-take-random-seat")]
   EnterAndTakeRandomSeat {
     /// Session ID of the user entering the room
+    #[arg(short = 's', long = "session-id")]
+    session_id: String,
+    /// Room ID (UUID)
+    room_id: String,
+  },
+  /// Leave a room
+  Leave {
+    /// Session ID of the user leaving the room
+    #[arg(short = 's', long = "session-id")]
     session_id: String,
     /// Room ID (UUID)
     room_id: String,

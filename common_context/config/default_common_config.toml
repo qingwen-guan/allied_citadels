@@ -1,5 +1,8 @@
 [db]
 # PostgreSQL database connection string
+# SECURITY: Do not hardcode passwords in this file!
+# The DSN is read from the DATABASE_URL or DB_DSN environment variable if set.
+# If not set, it will fall back to the dsn field below (for local development only).
 # Format: postgresql://user:password@host:port/database
 dsn = "postgresql://postgres:Pwd123@localhost:15432/allied_citadels"
 

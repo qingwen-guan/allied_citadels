@@ -12,7 +12,7 @@ pub async fn execute(
 
   // Create the room (room_service will parse the creator string and validate max_players)
   let room = room_service
-    .create_room(&name, &session_info.user_id, max_players)
+    .create_room(&session_info.user_id, &name, max_players)
     .await?;
 
   println!(

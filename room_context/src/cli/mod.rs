@@ -86,7 +86,7 @@ async fn handle_room_command(
       creator,
       max_players,
     } => {
-      let room = room_service.create_room(&name, &creator, max_players).await?;
+      let room = room_service.create_room(&creator, &name, max_players).await?;
       println!(
         "Room created: uuid={}, number={}, name={}, creator={}, max_players={}",
         room.id(),

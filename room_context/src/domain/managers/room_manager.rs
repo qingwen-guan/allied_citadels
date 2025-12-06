@@ -316,7 +316,7 @@ impl RoomManager {
   }
 
   /// Leave a room
-  pub async fn leave_room(&self, room_id: RoomId, user_id: UserId) -> Result<(), RoomError> {
+  pub async fn leave_room(&self, user_id: UserId, room_id: RoomId) -> Result<(), RoomError> {
     // Check if user is in the room
     let _participant = self
       .room_repository
