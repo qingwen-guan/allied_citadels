@@ -30,8 +30,8 @@ const JSON_RPC_INTERNAL_ERROR: i32 = -32603;
 // Application-specific error codes
 const ERR_INVALID_CREDENTIALS: i32 = -32001;
 const ERR_USER_NOT_FOUND: i32 = -32002;
-const ERR_SESSION_NOT_FOUND: i32 = -32001;
-const ERR_SESSION_EXPIRED: i32 = -32002;
+const ERR_SESSION_NOT_FOUND: i32 = -32006;
+const ERR_SESSION_EXPIRED: i32 = -32007;
 const ERR_INVALID_OPERATION: i32 = -32003;
 const ERR_INVALID_MAX_PLAYERS: i32 = -32004;
 const ERR_ROOM_NAME_EXISTS: i32 = -32005;
@@ -55,13 +55,17 @@ pub struct ConnectionInfo {
 
 // JSON-RPC 2.0 structures
 #[derive(Debug, Serialize, Deserialize)]
-pub struct JsonRpcCall {
+pub struct JsonRpcRequest {
   pub jsonrpc: String,
   pub method: String,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub params: Option<serde_json::Value>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub id: Option<serde_json::Value>,
+  /// Request ID. This server only supports Requests (not Notifications).
+  /// All method calls must include an `id` field and will receive a response.
+  /// Operations that would typically be notifications should be called as Requests
+  /// with an `id` and will return an acknowledgment response.
+  /// Supports numeric, string, and UUID IDs per JSON-RPC 2.0 spec.
+  pub id: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,8 +75,7 @@ pub struct JsonRpcResponse {
   result: Option<serde_json::Value>,
   #[serde(skip_serializing_if = "Option::is_none")]
   error: Option<JsonRpcError>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  id: Option<serde_json::Value>,
+  id: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,7 +87,7 @@ pub struct JsonRpcError {
 }
 
 impl JsonRpcResponse {
-  pub fn success(id: Option<serde_json::Value>, result: serde_json::Value) -> Self {
+  pub fn success(id: serde_json::Value, result: serde_json::Value) -> Self {
     Self {
       jsonrpc: JSON_RPC_VERSION.to_string(),
       result: Some(result),
@@ -93,7 +96,7 @@ impl JsonRpcResponse {
     }
   }
 
-  pub fn error(id: Option<serde_json::Value>, code: i32, message: String, data: Option<serde_json::Value>) -> Self {
+  pub fn error(id: serde_json::Value, code: i32, message: String, data: Option<serde_json::Value>) -> Self {
     Self {
       jsonrpc: JSON_RPC_VERSION.to_string(),
       result: None,
@@ -195,9 +198,17 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
           },
           Err(e) => {
             error!("Error handling JSON-RPC request: {}", e);
-            // Try to send error response if we can parse the request ID
-            if let Ok(req) = serde_json::from_str::<JsonRpcCall>(&text) {
-              let id = req.id.clone();
+            // Try to extract id from JSON for error response (don't deserialize full struct)
+            // Only accept Number or String IDs per JSON-RPC 2.0 spec
+            // Null IDs are notifications and should never receive responses
+            if let Some(id) = serde_json::from_str::<serde_json::Value>(&text).ok().and_then(|v| {
+              let id_val = v.get("id")?;
+              // Validate ID is a valid type (number or string only, not null)
+              match id_val {
+                serde_json::Value::Number(_) | serde_json::Value::String(_) => Some(id_val.clone()),
+                _ => None,
+              }
+            }) {
               let error_response = JsonRpcResponse::error(
                 id,
                 JSON_RPC_INTERNAL_ERROR,
@@ -208,6 +219,8 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
               if !error_text.is_empty() {
                 let _ = sender.send(Message::Text(error_text.into())).await;
               }
+            } else {
+              // If id cannot be extracted, treat as notification (no response per JSON-RPC 2.0 spec)
             }
           },
         }
@@ -231,12 +244,30 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 async fn handle_jsonrpc_request(
   text: &str, state: &AppState,
 ) -> Result<Option<JsonRpcResponse>, Box<dyn std::error::Error + Send + Sync>> {
-  let request: JsonRpcCall = serde_json::from_str(text)?;
+  let request: JsonRpcRequest = serde_json::from_str(text)?;
 
-  // Validate jsonrpc version
+  // Validate id is a valid type per JSON-RPC 2.0 spec (number or string)
+  // Null is valid per spec but represents a notification, which we don't support
+  // If invalid, treat as notification (no response per spec)
+  // This check MUST come before any error responses to ensure notifications never receive responses
+  match &request.id {
+    serde_json::Value::Number(_) | serde_json::Value::String(_) => {
+      // Valid ID type - proceed with request
+    },
+    serde_json::Value::Null => {
+      // Null ID is a notification - not supported, treat as notification (no response per JSON-RPC 2.0 spec)
+      return Ok(None);
+    },
+    _ => {
+      // Invalid ID type - treat as notification (no response per JSON-RPC 2.0 spec)
+      return Ok(None);
+    },
+  }
+
+  // Validate jsonrpc version (only after confirming ID is valid, so we can send error response)
   if request.jsonrpc != JSON_RPC_VERSION {
     return Ok(Some(JsonRpcResponse::error(
-      request.id.clone(),
+      request.id,
       JSON_RPC_INVALID_REQUEST,
       format!(
         "Invalid jsonrpc version: expected '{}', got '{}'",
@@ -246,16 +277,12 @@ async fn handle_jsonrpc_request(
     )));
   }
 
-  // If id is None, it's a notification (no response needed)
-  if request.id.is_none() {
-    return handle_jsonrpc_method(&request.method, request.params.clone(), state, None).await;
-  }
-
-  handle_jsonrpc_method(&request.method, request.params.clone(), state, request.id.clone()).await
+  // All requests must have an id (id is required, so deserialization will fail if missing)
+  execute_jsonrpc_method(&request.method, request.params.clone(), state, request.id).await
 }
 
-async fn handle_jsonrpc_method(
-  method: &str, params: Option<serde_json::Value>, state: &AppState, id: Option<serde_json::Value>,
+async fn execute_jsonrpc_method(
+  method: &str, params: Option<serde_json::Value>, state: &AppState, id: serde_json::Value,
 ) -> Result<Option<JsonRpcResponse>, Box<dyn std::error::Error + Send + Sync>> {
   match method {
     "ping" => Ok(Some(JsonRpcResponse::success(
@@ -411,8 +438,8 @@ async fn handle_jsonrpc_method(
       }
     },
     "welcome" => {
-      // This is a notification, no response
-      Ok(None)
+      // Acknowledgment for welcome message
+      Ok(Some(JsonRpcResponse::success(id, json!({ "acknowledged": true }))))
     },
     _ => Ok(Some(JsonRpcResponse::error(
       id,
