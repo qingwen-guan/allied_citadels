@@ -1,7 +1,9 @@
 mod cli;
 mod config;
+mod jsonrpc;
 mod server;
 mod services;
+mod state;
 
 pub use room_context::errors::RoomError;
 
