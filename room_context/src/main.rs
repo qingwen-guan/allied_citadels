@@ -8,6 +8,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, put};
 use clap::Parser;
+use common_context::database::create_postgres_pool;
 use room_context::domain::factories::RoomConfigFactory;
 use room_context::domain::valueobjects::RoomConfig;
 use room_context::errors::RoomError;
@@ -51,14 +52,8 @@ struct ErrorResponse {
   error: String,
 }
 
-async fn create_pool(config: &RoomConfig) -> Result<sqlx::PgPool, RoomError> {
-  common_context::database::create_db_pool(&config.db)
-    .await
-    .map_err(RoomError::Database)
-}
-
 async fn create_room_service(config: &RoomConfig) -> Result<RoomService, RoomError> {
-  let pool = create_pool(config).await?;
+  let pool = create_postgres_pool(&config.db).await.map_err(RoomError::Database)?;
   let room_repository = Box::new(PostgresRoomRepository::new(pool.clone()));
   let user_repository = Box::new(PostgresUserRepository::new(pool.clone()));
   let message_repository = Box::new(PostgresMessageRepository::new(pool));

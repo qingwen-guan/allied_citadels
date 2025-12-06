@@ -20,6 +20,8 @@ pub enum Command {
     #[command(subcommand)]
     command: RoomCommand,
   },
+  /// Start HTTP and WebSocket server
+  Serve,
 }
 
 #[derive(Subcommand)]
@@ -74,10 +76,11 @@ pub enum RoomCommand {
 }
 
 pub async fn handle_command(
-  command: Command, user_service: UserService, room_service: RoomService,
+  command: Command, user_service: UserService, room_service: RoomService, server_addr: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
   match command {
     Command::Login { nickname, password } => login::execute(user_service, nickname, password).await,
     Command::Room { command } => room::handle_room_command(command, user_service, room_service).await,
+    Command::Serve => crate::server::start_server(server_addr, user_service, room_service).await,
   }
 }

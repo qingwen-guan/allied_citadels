@@ -37,31 +37,6 @@ impl RoomConfigFactory {
     })?;
 
     #[derive(Deserialize)]
-    struct DbSection {
-      dsn: String,
-      max_connections: u32,
-      min_connections: u32,
-      #[serde(default = "default_acquire_timeout")]
-      acquire_timeout_seconds: u64,
-      #[serde(default = "default_idle_timeout")]
-      idle_timeout_seconds: u64,
-      #[serde(default = "default_max_lifetime")]
-      max_lifetime_seconds: u64,
-    }
-
-    const fn default_acquire_timeout() -> u64 {
-      30
-    }
-
-    const fn default_idle_timeout() -> u64 {
-      600
-    }
-
-    const fn default_max_lifetime() -> u64 {
-      1800
-    }
-
-    #[derive(Deserialize)]
     struct RoomSection {
       server_addr: String,
     }
@@ -69,20 +44,13 @@ impl RoomConfigFactory {
     #[derive(Deserialize)]
     struct ConfigFile {
       room: RoomSection,
-      db: DbSection,
+      db: DbConfig,
     }
 
     let config: ConfigFile = toml::from_str(&contents).map_err(|e| RoomError::Config(ConfigError::ParseError(e)))?;
 
     Ok(RoomConfig {
-      db: DbConfig {
-        dsn: config.db.dsn,
-        max_connections: config.db.max_connections,
-        min_connections: config.db.min_connections,
-        acquire_timeout_seconds: config.db.acquire_timeout_seconds,
-        idle_timeout_seconds: config.db.idle_timeout_seconds,
-        max_lifetime_seconds: config.db.max_lifetime_seconds,
-      },
+      db: config.db,
       server_addr: config.room.server_addr,
     })
   }

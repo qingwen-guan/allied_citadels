@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Session Context Server</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+
+        #messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            background: #f5f5f5;
+        }
+
+        .request {
+            color: #0066cc;
+        }
+
+        .response {
+            color: #009900;
+        }
+
+        .error {
+            color: #cc0000;
+        }
+
+        pre {
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Session Context Server</h1>
+
+    <div class="section">
+        <h2>HTTP API</h2>
+        <button onclick="testHealth()">Test GET /api/health</button>
+        <div id="http-result"></div>
+    </div>
+
+    <div class="section">
+        <h2>WebSocket JSON-RPC Test</h2>
+        <button onclick="connectWs()">Connect WebSocket</button>
+        <button onclick="disconnectWs()">Disconnect</button>
+        <button onclick="sendPing()">Send Ping (JSON-RPC)</button>
+        <button onclick="sendEcho()">Send Echo (JSON-RPC)</button>
+        <button onclick="sendLogin()">Send Login (JSON-RPC)</button>
+        <button onclick="sendRoomList()">Send Room.List (JSON-RPC)</button>
+        <button onclick="sendRoomCreate()">Send Room.Create (JSON-RPC)</button>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let requestId = 1;
+
+        function addMessage(msg, type = '') {
+            const div = document.getElementById('messages');
+            const p = document.createElement('div');
+            p.className = 'message ' + type;
+            const pre = document.createElement('pre');
+            pre.textContent = new Date().toLocaleTimeString() + ': ' + msg;
+            p.appendChild(pre);
+            div.appendChild(p);
+            div.scrollTop = div.scrollHeight;
+        }
+
+        async function testHealth() {
+            try {
+                const res = await fetch('/api/health');
+                const data = await res.json();
+                document.getElementById('http-result').innerHTML =
+                    '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } catch (e) {
+                document.getElementById('http-result').innerHTML = 'Error: ' + e;
+            }
+        }
+
+        function connectWs() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addMessage('Already connected!', 'error');
+                return;
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+            ws.onopen = () => addMessage('WebSocket connected!', 'response');
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    addMessage('Received: ' + JSON.stringify(data, null, 2), 'response');
+                } catch (e) {
+                    addMessage('Received (non-JSON): ' + event.data, 'response');
+                }
+            };
+            ws.onerror = (error) => addMessage('Error: ' + error, 'error');
+            ws.onclose = () => addMessage('WebSocket disconnected', 'error');
+        }
+
+        function disconnectWs() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function sendPing() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const request = {
+                    jsonrpc: '2.0',
+                    method: 'ping',
+                    id: requestId++
+                };
+                const msg = JSON.stringify(request);
+                ws.send(msg);
+                addMessage('Sent: ' + msg, 'request');
+            } else {
+                addMessage('Not connected! Click "Connect WebSocket" first.', 'error');
+            }
+        }
+
+        function sendEcho() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const request = {
+                    jsonrpc: '2.0',
+                    method: 'echo',
+                    params: { text: 'Hello from client at ' + new Date().toLocaleTimeString() },
+                    id: requestId++
+                };
+                const msg = JSON.stringify(request);
+                ws.send(msg);
+                addMessage('Sent: ' + msg, 'request');
+            } else {
+                addMessage('Not connected! Click "Connect WebSocket" first.', 'error');
+            }
+        }
+
+        function sendLogin() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const nickname = prompt('Enter nickname:');
+                const password = prompt('Enter password:');
+                if (nickname && password) {
+                    const request = {
+                        jsonrpc: '2.0',
+                        method: 'login',
+                        params: { nickname: nickname, password: password },
+                        id: requestId++
+                    };
+                    const msg = JSON.stringify(request);
+                    ws.send(msg);
+                    addMessage('Sent: ' + msg.replace(/"(password)":"[^"]*"/, '"$1":"***"'), 'request');
+                }
+            } else {
+                addMessage('Not connected! Click "Connect WebSocket" first.', 'error');
+            }
+        }
+
+        function sendRoomList() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                // Ask for optional pagination parameters
+                const offsetStr = prompt('Enter offset (optional, leave empty for none):');
+                const limitStr = prompt('Enter limit (optional, leave empty for none):');
+
+                const params = {};
+                if (offsetStr !== null && offsetStr.trim() !== '') {
+                    const offset = parseInt(offsetStr);
+                    if (!isNaN(offset)) {
+                        params.offset = offset;
+                    }
+                }
+                if (limitStr !== null && limitStr.trim() !== '') {
+                    const limit = parseInt(limitStr);
+                    if (!isNaN(limit)) {
+                        params.limit = limit;
+                    }
+                }
+
+                const request = {
+                    jsonrpc: '2.0',
+                    method: 'room.list',
+                    id: requestId++
+                };
+
+                // Only add params if we have any
+                if (Object.keys(params).length > 0) {
+                    request.params = params;
+                }
+
+                const msg = JSON.stringify(request);
+                ws.send(msg);
+                addMessage('Sent: ' + msg, 'request');
+            } else {
+                addMessage('Not connected! Click "Connect WebSocket" first.', 'error');
+            }
+        }
+
+        function sendRoomCreate() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const session_id = prompt('Enter session_id (UUID):');
+                if (!session_id) {
+                    addMessage('Session ID is required', 'error');
+                    return;
+                }
+                const name = prompt('Enter room name:');
+                if (!name) {
+                    addMessage('Room name is required', 'error');
+                    return;
+                }
+                const maxPlayersStr = prompt('Enter max players (4 or 6):');
+                if (!maxPlayersStr) {
+                    addMessage('Max players is required', 'error');
+                    return;
+                }
+                const max_players = parseInt(maxPlayersStr);
+                if (isNaN(max_players) || (max_players !== 4 && max_players !== 6)) {
+                    addMessage('Max players must be 4 or 6', 'error');
+                    return;
+                }
+
+                const request = {
+                    jsonrpc: '2.0',
+                    method: 'room.create',
+                    params: {
+                        session_id: session_id,
+                        name: name,
+                        max_players: max_players
+                    },
+                    id: requestId++
+                };
+
+                const msg = JSON.stringify(request);
+                ws.send(msg);
+                addMessage('Sent: ' + msg, 'request');
+            } else {
+                addMessage('Not connected! Click "Connect WebSocket" first.', 'error');
+            }
+        }
+    </script>
+</body>
+
+</html>

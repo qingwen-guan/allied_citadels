@@ -495,7 +495,7 @@ impl RoomManager {
 
   /// Stop viewing (but remain in room)
   // Note: viewing_seat_number is None means viewing globally, rather than not viewing
-  pub async fn stop_viewing(&self, room_id: RoomId, user_id: UserId) -> Result<(), RoomError> {
+  pub async fn stop_viewing(&self, user_id: UserId, room_id: RoomId) -> Result<(), RoomError> {
     // Check if user is in the room
     let _participant = self
       .room_repository

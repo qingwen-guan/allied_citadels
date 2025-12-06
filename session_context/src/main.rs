@@ -1,9 +1,12 @@
 mod cli;
+mod config;
+mod server;
+mod services;
 
 pub use room_context::errors::RoomError;
 
 use clap::Parser;
-use common_context::database::create_db_pool;
+use common_context::database::create_postgres_pool;
 use room_context::domain::factories::RoomConfigFactory;
 use room_context::domain::valueobjects::RoomConfig;
 use room_context::infra::{PostgresMessageRepository, PostgresRoomRepository};
@@ -40,7 +43,7 @@ async fn create_user_service(config: &UserConfig) -> Result<UserService, Box<dyn
 }
 
 async fn create_room_service(config: &RoomConfig) -> Result<RoomService, RoomError> {
-  let pool = create_db_pool(&config.db).await.map_err(RoomError::Database)?;
+  let pool = create_postgres_pool(&config.db).await.map_err(RoomError::Database)?;
   let room_repository = Box::new(PostgresRoomRepository::new(pool.clone()));
   let user_repository = Box::new(PostgresUserRepository::new(pool.clone()));
   let message_repository = Box::new(PostgresMessageRepository::new(pool));
@@ -62,5 +65,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let room_config = RoomConfigFactory::new().load()?;
   let room_service = create_room_service(&room_config).await?;
 
-  cli::handle_command(cli.command, user_service, room_service).await
+  cli::handle_command(cli.command, user_service, room_service, &config.server_addr).await
 }

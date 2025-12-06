@@ -4,7 +4,7 @@ use sqlx::postgres::PgPoolOptions;
 use crate::domain::valueobjects::DbConfig;
 
 /// Create a PostgreSQL connection pool from database configuration
-pub async fn create_db_pool(config: &DbConfig) -> Result<PgPool, sqlx::Error> {
+pub async fn create_postgres_pool(config: &DbConfig) -> Result<PgPool, sqlx::Error> {
   let pool = PgPoolOptions::new()
     .max_connections(config.max_connections)
     .min_connections(config.min_connections)

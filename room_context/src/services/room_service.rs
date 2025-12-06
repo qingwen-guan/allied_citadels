@@ -501,7 +501,7 @@ impl RoomService {
       .parse::<RoomId>()
       .map_err(|e| RoomError::InvalidOperation(format!("Invalid room_id: {} ({})", room_id, e)))?;
 
-    let result = self.room_manager.stop_viewing(room_id_parsed, user_id_parsed).await;
+    let result = self.room_manager.stop_viewing(user_id_parsed, room_id_parsed).await;
     match &result {
       Ok(_) => info!("User {} stopped viewing in room {}", user_id, room_id),
       Err(e) => error!(

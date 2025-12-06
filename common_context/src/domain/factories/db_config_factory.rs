@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use crate::constants::PACKAGE_DIR;
 use crate::domain::valueobjects::DbConfig;
 use crate::migrations::MigrationError;
 
@@ -30,67 +31,39 @@ impl DbConfigFactory {
     })?;
 
     #[derive(Deserialize)]
-    struct DbSection {
-      dsn: String,
-      max_connections: u32,
-      min_connections: u32,
-      #[serde(default = "default_acquire_timeout")]
-      acquire_timeout_seconds: u64,
-      #[serde(default = "default_idle_timeout")]
-      idle_timeout_seconds: u64,
-      #[serde(default = "default_max_lifetime")]
-      max_lifetime_seconds: u64,
-    }
-
-    const fn default_acquire_timeout() -> u64 {
-      30
-    }
-
-    const fn default_idle_timeout() -> u64 {
-      600
-    }
-
-    const fn default_max_lifetime() -> u64 {
-      1800
-    }
-
-    #[derive(Deserialize)]
     struct ConfigFile {
-      db: DbSection,
+      db: DbConfig,
     }
 
     let config: ConfigFile =
       toml::from_str(&contents).map_err(|e| MigrationError::Config(format!("Failed to parse config file: {}", e)))?;
 
-    Ok(DbConfig {
-      dsn: config.db.dsn,
-      max_connections: config.db.max_connections,
-      min_connections: config.db.min_connections,
-      acquire_timeout_seconds: config.db.acquire_timeout_seconds,
-      idle_timeout_seconds: config.db.idle_timeout_seconds,
-      max_lifetime_seconds: config.db.max_lifetime_seconds,
-    })
+    Ok(config.db)
   }
 
-  /// Finds the default config file path
-  pub fn find_config_file(default_config_file_name: &str) -> Option<PathBuf> {
-    // Try to find config/default_common_config.toml in the common_context directory
+  /// Finds a config file in a specific context directory
+  ///
+  /// # Arguments
+  /// * `context_dir` - The directory name (e.g., "session_context", "room_context", "common_context")
+  /// * `config_file_name` - The name of the config file (e.g., "default_session_config.toml")
+  ///
+  /// # Returns
+  /// `Some(PathBuf)` if the config file is found, `None` otherwise
+  pub fn find_config_file(context_dir: &str, config_file_name: &str) -> Option<PathBuf> {
+    // Try to find config file in the context directory using CARGO_MANIFEST_DIR
     if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
       let manifest_path = PathBuf::from(manifest_dir);
-      let config_path = manifest_path.join("config").join(default_config_file_name);
+      let config_path = manifest_path.join("config").join(config_file_name);
       if config_path.exists() {
         return Some(config_path);
       }
     }
 
-    // Walk up from current directory looking for common_context/config/default_common_config.toml
+    // Walk up from current directory looking for context_dir/config/config_file_name
     let mut current = env::current_dir().ok()?;
 
     for _ in 0..10 {
-      let config_path = current
-        .join("common_context")
-        .join("config")
-        .join(default_config_file_name);
+      let config_path = current.join(context_dir).join("config").join(config_file_name);
       if config_path.exists() {
         return Some(config_path);
       }
@@ -108,6 +81,8 @@ impl DbConfigFactory {
 
 impl Default for DbConfigFactory {
   fn default() -> Self {
-    Self::new(Self::find_config_file(DEFAULT_CONFIG_FILE_NAME).expect("Failed to find default config file"))
+    Self::new(
+      Self::find_config_file(PACKAGE_DIR, DEFAULT_CONFIG_FILE_NAME).expect("Failed to find default config file"),
+    )
   }
 }
